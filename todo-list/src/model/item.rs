@@ -52,9 +52,9 @@ impl Item {
     ) -> Result<Self> {
         let mut stmt = connection
             .prepare_cached(
-                "INSERT INTO todo_items (list_id, description) 
-                VALUES (:list_id, :description) 
-                RETURNING (id, created_at)",
+                "INSERT INTO todo_items (list_id, description)
+                VALUES (:list_id, :description)
+                RETURNING id, created_at",
             )
             .await
             .context("Item::new: preparing statement")?;
@@ -84,7 +84,7 @@ impl Item {
 
         let mut stmt = connection
             .prepare_cached(
-                "UPDATE todo_items 
+                "UPDATE todo_items
                 SET description = :description, is_completed = :is_completed
                 WHERE id = :id",
             )
@@ -107,7 +107,7 @@ impl Item {
     pub async fn load(connection: &Connection, id: ItemId) -> Result<Self> {
         let mut stmt = connection
             .prepare_cached(
-                "SELECT list_id, description, is_completed, created_at 
+                "SELECT list_id, description, is_completed, created_at
                 FROM todo_items WHERE id = ?",
             )
             .await

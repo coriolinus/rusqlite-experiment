@@ -16,3 +16,8 @@ How far can we get writing a TODO application that works both on the command lin
     - `query_row` returns no error if more than one row is returned
 3. Encryption is a planned feature, but it's experimental for now at least.
 4. Builder feels underbaked: path argument is `&str` not `impl AsRef<Path>`.
+5. We still occasionally encounter TODO items in the library
+    - `Parse error: TODO: parenthesized expression with multiple arguments not yet supported` from `RETURNING (id, created_at)`.
+        - Though that might have been an sql error anyway
+6. Ultimately in the native context it appears to work, at least for simple cases.
+    I would not yet call it ready for prime time in this context due to its various rough edges, but there's clear and substantial progress since last we looked at it.
