@@ -10,9 +10,12 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1.0.100"
 clap = { version = "4.5.57", features = ["derive", "string"] }
+derive_more = { version = "2.1.1", features = ["display"] }
 dirs = "6.0.0"
 glob = "0.3.3"
+log = "0.4.29"
 ratatui = "0.30.0"
 smol = "2.0.2"
 todo-list = { version = "0.1.0", path = "../todo-list" }
+tui-logger = "0.18.1"
 turso = "0.4.4"

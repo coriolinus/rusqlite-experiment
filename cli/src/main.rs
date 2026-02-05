@@ -11,8 +11,16 @@ use crate::tui_app::{App, Message, State};
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    let mut app =
-        smol::block_on(async move { App::new(&args.db_path).await }).context("creating app")?;
+
+    // Initialize logger if requested
+    if let Some(log_level) = args.log.map(Into::into) {
+        tui_logger::init_logger(log_level).context("initializing logger")?;
+        tui_logger::set_default_level(log_level);
+    }
+
+    let logging_enabled = args.log.is_some();
+    let mut app = smol::block_on(async move { App::new(&args.db_path, logging_enabled).await })
+        .context("creating app")?;
 
     helpers::install_panic_hook();
     let mut terminal = helpers::init_terminal().context("initializing terminal")?;

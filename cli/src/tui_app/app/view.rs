@@ -14,10 +14,30 @@ use crate::tui_app::{App, State, TextInputMode};
 impl App {
     /// Render the TUI according to the current state
     pub(crate) fn view(&mut self, frame: &mut Frame) {
+        let area = frame.area();
+
+        // Split the screen if logging is enabled
+        let (main_area, log_area) = if self.logging_enabled {
+            let chunks = Layout::vertical([Constraint::Percentage(50), Constraint::Percentage(50)])
+                .split(area);
+            (chunks[0], Some(chunks[1]))
+        } else {
+            (area, None)
+        };
+
+        // Render the main content in the top area (or full area if no logging)
+        self.render_main_content(frame, main_area);
+
+        // Render the logger widget in the bottom area if enabled
+        if let Some(log_area) = log_area {
+            self.render_logger(frame, log_area);
+        }
+    }
+
+    /// Render the main application content
+    fn render_main_content(&mut self, frame: &mut Frame, area: Rect) {
         match &mut self.state {
-            State::Initial => {
-                frame.render_widget("spinning up (<q> or <esc> to quit)", frame.area())
-            }
+            State::Initial => frame.render_widget("spinning up (<q> or <esc> to quit)", area),
             State::ListSelect {
                 labels, list_state, ..
             } => {
@@ -47,7 +67,7 @@ impl App {
                     .highlight_symbol("> ")
                     .direction(ListDirection::TopToBottom);
 
-                frame.render_stateful_widget(list, frame.area(), list_state);
+                frame.render_stateful_widget(list, area, list_state);
             }
             State::ListView {
                 todo_list,
@@ -94,7 +114,7 @@ impl App {
                     .highlight_symbol("> ")
                     .direction(ListDirection::TopToBottom);
 
-                frame.render_stateful_widget(list, frame.area(), item_list_state);
+                frame.render_stateful_widget(list, area, item_list_state);
             }
             State::TextInput {
                 mode,
@@ -154,6 +174,23 @@ impl App {
                 unreachable!("app should always exit prior to rendering this")
             }
         }
+    }
+
+    /// Render the logger widget
+    fn render_logger(&self, frame: &mut Frame, area: Rect) {
+        let logger_widget = tui_logger::TuiLoggerWidget::default()
+            .block(
+                Block::bordered()
+                    .border_set(border::PLAIN)
+                    .title(" Logs ".bold()),
+            )
+            .style_error(Style::default().fg(Color::Red))
+            .style_warn(Style::default().fg(Color::Yellow))
+            .style_info(Style::default().fg(Color::Blue))
+            .style_debug(Style::default().fg(Color::Green))
+            .style_trace(Style::default().fg(Color::Magenta));
+
+        frame.render_widget(logger_widget, area);
     }
 
     /// Helper function to create a centered rectangle 3 lines tall

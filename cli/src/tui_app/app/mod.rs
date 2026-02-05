@@ -14,10 +14,11 @@ use crate::tui_app::State;
 pub(crate) struct App {
     pub(crate) connection: Connection,
     pub(crate) state: State,
+    pub(crate) logging_enabled: bool,
 }
 
 impl App {
-    pub(crate) async fn new(db_path: impl AsRef<Path>) -> Result<Self> {
+    pub(crate) async fn new(db_path: impl AsRef<Path>, logging_enabled: bool) -> Result<Self> {
         let db_path = std::path::absolute(db_path).context("absolutizing path")?;
 
         let db_exists = std::fs::exists(&db_path).context("checking for db path existence")?;
@@ -57,6 +58,7 @@ impl App {
         Ok(Self {
             connection,
             state: State::Initial,
+            logging_enabled,
         })
     }
 }
