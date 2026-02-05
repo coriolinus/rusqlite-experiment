@@ -2,7 +2,13 @@ use std::path::Path;
 
 use anyhow::{Context as _, Result, anyhow};
 use glob::glob;
-use ratatui::Frame;
+use ratatui::{
+    Frame,
+    style::Stylize,
+    symbols::border,
+    text::Line,
+    widgets::{Block, HighlightSpacing, List, ListDirection, ListState},
+};
 use turso::Connection;
 
 use crate::tui_app::{Message, State};
@@ -61,22 +67,106 @@ impl App {
 
     /// Process an incoming message, updating the app state appropriately.
     pub(crate) async fn update(&mut self, msg: Message) -> Option<Message> {
+        /// if this is an error, produce the error state and return
+        macro_rules! or_err_state {
+            ($e:expr) => {{
+                match $e {
+                    Ok(ok) => ok,
+                    Err(err) => {
+                        self.state = State::Error(err);
+                        return None;
+                    }
+                }
+            }};
+        }
+
         match msg {
             Message::Quit => {
                 self.state = State::Exit;
-                None
+            }
+            Message::LoadTodos => {
+                let (ids, labels) = or_err_state!(
+                    todo_list::TodoList::list_all(&self.connection)
+                        .await
+                        .context("listing all todo lists")
+                )
+                .into_iter()
+                .unzip::<_, _, Vec<_>, Vec<_>>();
+
+                self.state = State::ListSelect {
+                    ids,
+                    labels,
+                    list_state: ListState::default(),
+                };
+            }
+            Message::DecrementItem => match &mut self.state {
+                State::ListSelect { list_state, .. } => {
+                    list_state.select_previous();
+                }
+                state => {
+                    self.state = State::Error(anyhow!(
+                        "unexpected Message::DecrementItem in state: {state:?}"
+                    ))
+                }
+            },
+            Message::IncrementItem => match &mut self.state {
+                State::ListSelect { list_state, .. } => {
+                    list_state.select_next();
+                }
+                state => {
+                    self.state = State::Error(anyhow!(
+                        "unexpected Message::IncrementItem in state: {state:?}"
+                    ))
+                }
+            },
+            Message::SelectTodoList(list_id) => {
+                self.state = State::Error(anyhow!(
+                    "unimplemented: update for SelectTodoList({list_id:?})"
+                ))
+            }
+            Message::NewTodoList => {
+                self.state = State::Error(anyhow!("unimplemented: update for NewTodoList"))
             }
         }
+        None
     }
 
     /// Render the TUI according to the current state
-    pub(crate) fn view(&self, frame: &mut Frame) {
-        match &self.state {
+    pub(crate) fn view(&mut self, frame: &mut Frame) {
+        match &mut self.state {
             State::Initial => {
                 frame.render_widget("spinning up (<q> or <esc> to quit)", frame.area())
             }
-            State::ListSelect(hash_map) => todo!(),
-            State::Exit => unreachable!("app should always exit prior to rendering this"),
+            State::ListSelect {
+                labels, list_state, ..
+            } => {
+                let title = Line::from(" Select a Todo list ".bold());
+                let instructions = Line::from(vec![
+                    " Decrement ".into(),
+                    "<up>".blue(),
+                    " Increment ".into(),
+                    "<down>".blue(),
+                    " Select ".into(),
+                    "<enter>".blue(),
+                    " New Todo ".into(),
+                    "n".blue(),
+                ]);
+                let block = Block::bordered()
+                    .title(title)
+                    .title_bottom(instructions.centered())
+                    .border_set(border::PLAIN);
+
+                let list = List::new(labels.iter().map(|label| label.as_str()))
+                    .block(block)
+                    .highlight_spacing(HighlightSpacing::Always)
+                    .highlight_symbol("> ")
+                    .direction(ListDirection::TopToBottom);
+
+                frame.render_stateful_widget(list, frame.area(), list_state);
+            }
+            State::Error(_) | State::Exit => {
+                unreachable!("app should always exit prior to rendering this")
+            }
         }
     }
 }

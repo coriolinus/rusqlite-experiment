@@ -17,7 +17,7 @@ fn main() -> Result<()> {
     helpers::install_panic_hook();
     let mut terminal = helpers::init_terminal().context("initializing terminal")?;
 
-    while app.state != State::Exit {
+    while !app.state.is_terminal() {
         // draw the ui
         terminal
             .draw(|frame| app.view(frame))
@@ -36,5 +36,15 @@ fn main() -> Result<()> {
     }
 
     helpers::restore_terminal().context("restoring terminal")?;
+
+    if let State::Error(err) = app.state {
+        return Err(err);
+    }
+
+    debug_assert!(
+        matches!(app.state, State::Exit),
+        "app encountered unexpected termination"
+    );
+
     Ok(())
 }
