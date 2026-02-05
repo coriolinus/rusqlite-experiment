@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use anyhow::{Context as _, Result};
+use log::debug;
 use time::UtcDateTime;
 use turso::{Connection, named_params};
 
@@ -12,6 +13,12 @@ pub struct TodoListId(u32);
 impl turso::params::IntoValue for TodoListId {
     fn into_value(self) -> turso::Result<turso::Value> {
         Ok(turso::Value::Integer(self.0.into()))
+    }
+}
+
+impl log::kv::ToValue for TodoListId {
+    fn to_value(&self) -> log::kv::Value<'_> {
+        self.0.to_value()
     }
 }
 
@@ -76,6 +83,8 @@ impl TodoList {
             out.push((id, title));
         }
 
+        debug!("count" = out.len(); "got all todo lists");
+
         Ok(out)
     }
 
@@ -92,6 +101,8 @@ impl TodoList {
 
         let id = super::parse_id(&row, 0).context("TodoList::new: parsing row id")?;
         let created_at = super::parse_date(&row, 1).context("TodoList::new: getting created_at")?;
+
+        debug!(id, created_at:debug; "created a new todo list");
 
         Ok(Self {
             id,
@@ -112,6 +123,8 @@ impl TodoList {
             .execute(named_params! {":title": self.title.as_str(), ":id": self.id})
             .await
             .context("TodoList::save_inner: executing query")?;
+
+        debug!("list_id" = self.id; "saved todo list");
         debug_assert_eq!(
             affected_rows, 1,
             "there must always exist exactly one row in our DB for an existing TodoList"
@@ -156,6 +169,8 @@ impl TodoList {
             .await
             .context("TodoList::load: loading items")?;
 
+        debug!("list_id" = id, created_at:debug; "loaded todo list by id");
+
         Ok(Self {
             id,
             title,
@@ -179,6 +194,9 @@ impl TodoList {
             .execute((id,))
             .await
             .context("TodoList::delete: deleting")?;
+
+        debug!("list_id" = id, "was_present" = affected_rows > 0; "deleted todo list by id");
+
         Ok(affected_rows > 0)
     }
 
@@ -187,11 +205,13 @@ impl TodoList {
         let item = Item::new(connection, self.id, description)
             .await
             .context("TodoList::add_item: creating item")?;
-        let ejected = self.items.insert(item.id(), item);
+        let item_id = item.id();
+        let ejected = self.items.insert(item_id, item);
         debug_assert!(
             ejected.is_none(),
             "inserting a new item should always produce a fresh id"
         );
+        debug!(item_id, "list_id" = self.id; "added an item to a list");
         Ok(())
     }
 
@@ -208,6 +228,7 @@ impl TodoList {
             "DB and memory representations should always match"
         );
 
+        debug!(item_id, "list_id" = self.id; "removed an item from a list");
         Ok(did_remove)
     }
 }

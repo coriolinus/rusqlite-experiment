@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use anyhow::{Context as _, Result};
+use log::debug;
 use time::UtcDateTime;
 use turso::{Connection, named_params};
 
@@ -12,6 +13,12 @@ pub struct ItemId(u32);
 impl turso::params::IntoValue for ItemId {
     fn into_value(self) -> turso::Result<turso::Value> {
         Ok(turso::Value::Integer(self.0.into()))
+    }
+}
+
+impl log::kv::ToValue for ItemId {
+    fn to_value(&self) -> log::kv::Value<'_> {
+        self.0.to_value()
     }
 }
 
@@ -66,6 +73,8 @@ impl Item {
         let id = super::parse_id(&row, 0).context("Item::new: parsing inserted id")?;
         let created_at = super::parse_date(&row, 1).context("TodoList::new: getting created_at")?;
 
+        debug!(id, list_id, created_at:debug; "inserted new Item into the db");
+
         Ok(Self {
             id,
             list_id,
@@ -79,6 +88,7 @@ impl Item {
     /// Update this item in the DB, but only if it's dirty.
     pub(crate) async fn save(&mut self, connection: &Connection) -> Result<()> {
         if !self.dirty {
+            debug!("id" = self.id; "returning early from saving Item in db because it is not dirty");
             return Ok(());
         }
 
@@ -99,7 +109,10 @@ impl Item {
             .await
             .context("Item::save: execute query")?;
 
+        debug!("id" = self.id, "is_completed" = self.is_completed; "saved Item in the db");
         debug_assert_eq!(affected_rows, 1, "each item should affect exactly one row");
+
+        self.dirty = false;
         Ok(())
     }
 
@@ -121,6 +134,8 @@ impl Item {
         let description = row.get(1).context("Item::load: getting description")?;
         let is_completed = row.get(2).context("Item::load: getting is_completed")?;
         let created_at = super::parse_date(&row, 3).context("Item::load: getting created_at")?;
+
+        debug!(id, list_id, created_at:debug, is_completed; "loaded an item by its id");
 
         Ok(Self {
             id,
@@ -178,6 +193,8 @@ impl Item {
             debug_assert_eq!(ejected, None);
         }
 
+        debug!("count" = out.len(), list_id; "loaded all items by list id");
+
         Ok(out)
     }
 
@@ -196,6 +213,9 @@ impl Item {
             .execute((id,))
             .await
             .context("Item::delete: executing delete")?;
+
+        debug!(id, "was_present" = affected_rows > 0; "deleted an item by its id");
+
         Ok(affected_rows > 0)
     }
 }

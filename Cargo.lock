@@ -2763,6 +2763,7 @@ dependencies = [
  "accessory",
  "anyhow",
  "derive_more",
+ "log",
  "once-fn",
  "time",
  "turso",
