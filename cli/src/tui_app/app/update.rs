@@ -89,6 +89,32 @@ impl App {
                     cursor_pos: 0,
                 };
             }
+            Message::DeleteList => {
+                let State::ListSelect {
+                    ids,
+                    list_state,
+                    ..
+                } = &mut self.state
+                else {
+                    self.state = State::Error(anyhow!(
+                        "unexpected Message::DeleteList in {:?}",
+                        self.state
+                    ));
+                    return None;
+                };
+
+                let selected_idx = list_state.selected()?;
+                let &list_id = ids.get(selected_idx)?;
+                
+                or_err_state!(
+                    todo_list::TodoList::delete(&self.connection, list_id)
+                        .await
+                        .context("deleting todo list")
+                );
+
+                // Reload the list view to reflect the deletion
+                return Some(Message::LoadTodos);
+            }
             Message::NewItem => {
                 let State::ListView { todo_list, .. } = &self.state else {
                     self.state =

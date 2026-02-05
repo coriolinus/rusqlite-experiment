@@ -12,6 +12,7 @@ pub(crate) enum Message {
     IncrementItem,
     SelectTodoList(TodoListId),
     NewTodoList,
+    DeleteList,
     NewItem,
     EditItem,
     DeleteItem,
@@ -73,6 +74,7 @@ impl Message {
                     Some(Self::SelectTodoList(id))
                 }
                 KeyCode::Char('n') => Some(Self::NewTodoList),
+                KeyCode::Char('x') => Some(Self::DeleteList),
                 _ => None,
             },
             State::ListView { .. } => {

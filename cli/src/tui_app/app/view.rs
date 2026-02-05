@@ -27,6 +27,7 @@ impl App {
                         ("Navigate", "↑↓"),
                         ("Select", "enter"),
                         ("New", "n"),
+                        ("Delete", "x"),
                         ("Quit", "q/esc"),
                     ],
                 );
