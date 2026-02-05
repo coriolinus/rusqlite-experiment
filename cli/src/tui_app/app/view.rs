@@ -101,8 +101,8 @@ impl App {
                 buffer,
                 cursor_pos,
             } => {
-                // Center a modal dialog
-                let modal_area = Self::centered_rect(60, 20, frame.area());
+                // Center a modal dialog within the available area
+                let modal_area = Self::centered_rect(60, area);
 
                 let title = match mode {
                     TextInputMode::NewList => " Create New Todo List ",
@@ -113,21 +113,23 @@ impl App {
                 let block = Self::make_block(title, [("Confirm", "enter"), ("Cancel", "esc")])
                     .border_set(border::ROUNDED);
 
+                let cursor_pos = *cursor_pos;
+
                 // Create the text display with cursor
                 let text_with_cursor = if buffer.is_empty() {
                     vec![Line::from(vec![Span::styled(
-                        "█",
+                        " ",
                         Style::default().add_modifier(Modifier::REVERSED),
                     )])]
                 } else {
-                    let before = &buffer[..*cursor_pos];
-                    let cursor_char = if *cursor_pos < buffer.len() {
-                        &buffer[*cursor_pos..*cursor_pos + 1]
+                    let before = &buffer[..cursor_pos];
+                    let cursor_char = if cursor_pos < buffer.len() {
+                        &buffer[cursor_pos..cursor_pos + 1]
                     } else {
                         " "
                     };
-                    let after = if *cursor_pos < buffer.len() {
-                        &buffer[*cursor_pos + 1..]
+                    let after = if cursor_pos < buffer.len() {
+                        &buffer[cursor_pos + 1..]
                     } else {
                         ""
                     };
@@ -154,21 +156,27 @@ impl App {
         }
     }
 
-    /// Helper function to create a centered rectangle
-    fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-        let popup_layout = Layout::vertical([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
+    /// Helper function to create a centered rectangle 3 lines tall
+    fn centered_rect(percent_x: u16, r: Rect) -> Rect {
+        let [_, popup_vertical, _] = *Layout::vertical([
+            Constraint::Fill(2),
+            Constraint::Length(3),
+            Constraint::Fill(3),
         ])
-        .split(r);
+        .split(r) else {
+            panic!("3 assignments must match 3 constraints")
+        };
 
-        Layout::horizontal([
-            Constraint::Percentage((100 - percent_x) / 2),
+        let [_, popup, _] = *Layout::horizontal([
+            Constraint::Fill(1),
             Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Fill(1),
         ])
-        .split(popup_layout[1])[1]
+        .split(popup_vertical) else {
+            panic!("3 assignments must match 3 constraints")
+        };
+
+        popup
     }
 
     /// Helper function to create a text block
