@@ -8,5 +8,5 @@ accessory = "2.1.0"
 anyhow = "1.0.100"
 derive_more = { version = "2.1.1", features = ["deref", "from"] }
 once-fn = "0.2.1"
-time = { version = "0.3.46", features = ["parsing"] }
+time = { version = "0.3.46", features = ["macros", "parsing"] }
 turso = "0.4.4"
