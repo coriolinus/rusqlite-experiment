@@ -10,4 +10,8 @@ derive_more = { version = "2.1.1", features = ["deref", "from"] }
 log = { version = "0.4.29", features = ["kv"] }
 once-fn = "0.2.1"
 time = { version = "0.3.47", features = ["macros", "parsing"] }
-turso = "0.4.4"
+turso = { version = "0.5.0-pre.8", default-features = false }
+
+[features]
+default = ["mimalloc"]
+mimalloc = ["turso/mimalloc"]
