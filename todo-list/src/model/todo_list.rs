@@ -7,7 +7,9 @@ use turso::{Connection, named_params};
 
 use crate::{Item, ItemId};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, derive_more::From)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, derive_more::From, derive_more::Into,
+)]
 pub struct TodoListId(u32);
 
 impl turso::params::IntoValue for TodoListId {
@@ -201,7 +203,11 @@ impl TodoList {
     }
 
     /// Add an item to this list.
-    pub async fn add_item(&mut self, connection: &Connection, description: String) -> Result<()> {
+    pub async fn add_item(
+        &mut self,
+        connection: &Connection,
+        description: String,
+    ) -> Result<ItemId> {
         let item = Item::new(connection, self.id, description)
             .await
             .context("TodoList::add_item: creating item")?;
@@ -212,7 +218,7 @@ impl TodoList {
             "inserting a new item should always produce a fresh id"
         );
         debug!(item_id, "list_id" = self.id; "added an item to a list");
-        Ok(())
+        Ok(item_id)
     }
 
     /// Remove an item from this list.

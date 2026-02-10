@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 accessory = "2.1.0"
 anyhow = "1.0.100"
-derive_more = { version = "2.1.1", features = ["deref", "from"] }
+derive_more = { version = "2.1.1", features = ["deref", "from", "into"] }
 log = { version = "0.4.29", features = ["kv"] }
 once-fn = "0.2.1"
 time = { version = "0.3.47", features = ["macros", "parsing"] }

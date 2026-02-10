@@ -1,5 +1,6 @@
 use std::{convert::Infallible, fmt::Display};
 
+use anyhow::anyhow;
 use serde_json::json;
 use wasm_bindgen::prelude::*;
 
@@ -41,6 +42,17 @@ impl From<Error> for JsValue {
         // convert to JsValue
         serde_wasm_bindgen::to_value(&json_value)
             .expect("converting a simple object tree to js works")
+    }
+}
+
+impl From<JsValue> for Error {
+    fn from(value: JsValue) -> Self {
+        let value = serde_wasm_bindgen::from_value::<serde_json::Value>(value.clone())
+            .ok()
+            .or_else(|| value.as_string().map(Into::into))
+            .and_then(|value| serde_json::to_string(&value).ok())
+            .unwrap_or("js error".into());
+        Self(anyhow!(value))
     }
 }
 

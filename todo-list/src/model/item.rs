@@ -7,7 +7,9 @@ use turso::{Connection, named_params};
 
 use crate::TodoListId;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, derive_more::From)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, derive_more::From, derive_more::Into,
+)]
 pub struct ItemId(u32);
 
 impl turso::params::IntoValue for ItemId {
