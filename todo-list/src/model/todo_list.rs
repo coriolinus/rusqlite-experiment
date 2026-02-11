@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use anyhow::{Context as _, Result};
 use log::debug;
+use rusqlite::{Connection, ToSql, named_params, types::ToSqlOutput};
 use time::UtcDateTime;
-use turso::{Connection, named_params};
 
 use crate::{Item, ItemId};
 
@@ -12,9 +12,11 @@ use crate::{Item, ItemId};
 )]
 pub struct TodoListId(u32);
 
-impl turso::params::IntoValue for TodoListId {
-    fn into_value(self) -> turso::Result<turso::Value> {
-        Ok(turso::Value::Integer(self.0.into()))
+impl ToSql for TodoListId {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        Ok(ToSqlOutput::Owned(rusqlite::types::Value::Integer(
+            self.0.into(),
+        )))
     }
 }
 
@@ -66,20 +68,14 @@ impl TodoList {
     pub async fn list_all(connection: &Connection) -> Result<Vec<(TodoListId, String)>> {
         let mut stmt = connection
             .prepare_cached("SELECT id, title FROM todo_lists")
-            .await
             .context("TodoList::list_all: preparing statement")?;
         let mut rows = stmt
             .query(())
-            .await
             .context("TodoList::list_all: getting rows iterator")?;
 
         let mut out = Vec::new();
-        while let Some(row) = rows
-            .next()
-            .await
-            .context("TodoList::list_all: fetching row")?
-        {
-            let id = super::parse_id(&row, 0).context("TodoList::list_all: parsing row id")?;
+        while let Some(row) = rows.next().context("TodoList::list_all: fetching row")? {
+            let id = TodoListId(row.get("id").context("TodoList::list_all: getting id")?);
             let title = row.get(1).context("TodoList::list_all: getting title")?;
 
             out.push((id, title));
@@ -94,15 +90,15 @@ impl TodoList {
     pub async fn new(connection: &Connection, title: String) -> Result<Self> {
         let mut stmt = connection
             .prepare_cached("INSERT INTO todo_lists (title) VALUES (?) RETURNING id, created_at")
-            .await
             .context("TodoList::new: preparing statement")?;
-        let row = stmt
-            .query_row((title.as_str(),))
-            .await
+        let (id, created_at) = stmt
+            .query_row([title.as_str()], |row| {
+                Ok((row.get("id")?, row.get::<_, String>("created_at")?))
+            })
             .context("TodoList::new: getting insertion result row")?;
-
-        let id = super::parse_id(&row, 0).context("TodoList::new: parsing row id")?;
-        let created_at = super::parse_date(&row, 1).context("TodoList::new: getting created_at")?;
+        let id = TodoListId(id);
+        let created_at =
+            super::parse_date(&created_at).context("TodoList::new: getting created_at")?;
 
         debug!(id, created_at:debug; "created a new todo list");
 
@@ -119,11 +115,9 @@ impl TodoList {
     async fn save_inner(&mut self, connection: &Connection) -> Result<()> {
         let mut stmt = connection
             .prepare_cached("UPDATE todo_lists SET title = :title WHERE id = :id")
-            .await
             .context("TodoList::save_inner: preparing statement")?;
         let affected_rows = stmt
             .execute(named_params! {":title": self.title.as_str(), ":id": self.id})
-            .await
             .context("TodoList::save_inner: executing query")?;
 
         debug!("list_id" = self.id; "saved todo list");
@@ -157,15 +151,15 @@ impl TodoList {
     pub async fn load(connection: &Connection, id: TodoListId) -> Result<Self> {
         let mut stmt = connection
             .prepare_cached("SELECT title, created_at FROM todo_lists WHERE id = ?")
-            .await
             .context("TodoList::load: preparing statement")?;
-        let row = stmt
-            .query_row((id,))
-            .await
+        let (title, created_at) = stmt
+            .query_row([id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
             .context("TodoList::load: querying row")?;
 
-        let title = row.get(0).context("TodoList::load: getting title")?;
-        let created_at = super::parse_date(&row, 1).context("TodoList::new: getting created_at")?;
+        let created_at =
+            super::parse_date(&created_at).context("TodoList::new: getting created_at")?;
 
         let items = Item::load_for_list(connection, id)
             .await
@@ -190,12 +184,8 @@ impl TodoList {
     pub async fn delete(connection: &Connection, id: TodoListId) -> Result<bool> {
         let mut stmt = connection
             .prepare_cached("DELETE FROM todo_lists WHERE id = ?")
-            .await
             .context("TodoList::delete: preparing statement")?;
-        let affected_rows = stmt
-            .execute((id,))
-            .await
-            .context("TodoList::delete: deleting")?;
+        let affected_rows = stmt.execute([id]).context("TodoList::delete: deleting")?;
 
         debug!("list_id" = id, "was_present" = affected_rows > 0; "deleted todo list by id");
 

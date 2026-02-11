@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use anyhow::{Context as _, Result};
 use log::debug;
+use rusqlite::{Connection, ToSql, named_params, types::ToSqlOutput};
 use time::UtcDateTime;
-use turso::{Connection, named_params};
 
 use crate::TodoListId;
 
@@ -12,9 +12,11 @@ use crate::TodoListId;
 )]
 pub struct ItemId(u32);
 
-impl turso::params::IntoValue for ItemId {
-    fn into_value(self) -> turso::Result<turso::Value> {
-        Ok(turso::Value::Integer(self.0.into()))
+impl ToSql for ItemId {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        Ok(ToSqlOutput::Owned(rusqlite::types::Value::Integer(
+            self.0.into(),
+        )))
     }
 }
 
@@ -65,15 +67,21 @@ impl Item {
                 VALUES (:list_id, :description)
                 RETURNING id, created_at",
             )
-            .await
             .context("Item::new: preparing statement")?;
-        let row = stmt
-            .query_row(named_params! {":list_id": list_id, ":description": description.as_str()})
-            .await
+        let (id, created_at) = stmt
+            .query_row(
+                named_params! {":list_id": list_id, ":description": description.as_str()},
+                |row| {
+                    let id = row.get("id")?;
+                    let created_at = row.get::<_, String>("created_at")?;
+                    Ok((id, created_at))
+                },
+            )
             .context("Item::new: inserting row")?;
 
-        let id = super::parse_id(&row, 0).context("Item::new: parsing inserted id")?;
-        let created_at = super::parse_date(&row, 1).context("TodoList::new: getting created_at")?;
+        let id = ItemId(id);
+        let created_at =
+            super::parse_date(&created_at).context("TodoList::new: getting created_at")?;
 
         debug!(id, list_id, created_at:debug; "inserted new Item into the db");
 
@@ -100,7 +108,6 @@ impl Item {
                 SET description = :description, is_completed = :is_completed
                 WHERE id = :id",
             )
-            .await
             .context("Item::save: prepare statement")?;
         let affected_rows = stmt
             .execute(named_params! {
@@ -108,7 +115,6 @@ impl Item {
                 ":is_completed": self.is_completed,
                 ":id": self.id,
             })
-            .await
             .context("Item::save: execute query")?;
 
         debug!("id" = self.id, "is_completed" = self.is_completed; "saved Item in the db");
@@ -125,17 +131,20 @@ impl Item {
                 "SELECT list_id, description, is_completed, created_at
                 FROM todo_items WHERE id = ?",
             )
-            .await
             .context("Item::load: preparing statement")?;
-        let row = stmt
-            .query_row((id,))
-            .await
+        let (list_id, description, is_completed, created_at) = stmt
+            .query_row([id], |row| {
+                let list_id = row.get::<_, u32>("list_id")?;
+                let description = row.get("description")?;
+                let is_completed = row.get("is_completed")?;
+                let created_at = row.get::<_, String>("created_at")?;
+                Ok((list_id, description, is_completed, created_at))
+            })
             .context("Item::load: loading row")?;
 
-        let list_id = super::parse_id(&row, 0).context("Item::load: getting list_id")?;
-        let description = row.get(1).context("Item::load: getting description")?;
-        let is_completed = row.get(2).context("Item::load: getting is_completed")?;
-        let created_at = super::parse_date(&row, 3).context("Item::load: getting created_at")?;
+        let list_id = TodoListId::from(list_id);
+        let created_at =
+            super::parse_date(&created_at).context("Item::load: getting created_at")?;
 
         debug!(id, list_id, created_at:debug, is_completed; "loaded an item by its id");
 
@@ -162,24 +171,24 @@ impl Item {
                 "SELECT id, description, is_completed, created_at
                 FROM todo_items WHERE list_id = ?",
             )
-            .await
             .context("Item::load_for_list: preparing statement")?;
         let mut rows = stmt
-            .query((list_id,))
-            .await
+            .query([list_id])
             .context("Item::load_for_list: querying rows")?;
 
         let mut out = BTreeMap::new();
         while let Some(row) = rows
             .next()
-            .await
             .context("Item::load_for_list: getting next row")?
         {
-            let id = super::parse_id(&row, 0).context("Item::load_for_list: getting id")?;
+            let id = ItemId(row.get("id").context("Item::load: getting id")?);
             let description = row.get(1).context("Item::load: getting description")?;
             let is_completed = row.get(2).context("Item::load: getting is_completed")?;
-            let created_at =
-                super::parse_date(&row, 3).context("Item::load: getting created_at")?;
+            let created_at = super::parse_date(
+                &row.get::<_, String>(3)
+                    .context("Item::load: getting created_at")?,
+            )
+            .context("Item::load: parsing created_at")?;
 
             let ejected = out.insert(
                 id,
@@ -209,11 +218,9 @@ impl Item {
     pub(crate) async fn delete(connection: &Connection, id: ItemId) -> Result<bool> {
         let mut stmt = connection
             .prepare_cached("DELETE FROM todo_items WHERE id = ?")
-            .await
             .context("Item::delete: preparing statement")?;
         let affected_rows = stmt
-            .execute((id,))
-            .await
+            .execute([id])
             .context("Item::delete: executing delete")?;
 
         debug!(id, "was_present" = affected_rows > 0; "deleted an item by its id");

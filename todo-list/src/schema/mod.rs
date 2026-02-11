@@ -1,5 +1,5 @@
 use anyhow::{Context as _, Result};
-use turso::Connection;
+use rusqlite::Connection;
 
 const SCHEMA: &str = include_str!("schema.sql");
 
@@ -10,8 +10,5 @@ const SCHEMA: &str = include_str!("schema.sql");
 ///
 /// Really we want a proper migration format, but that's too much to build right now for this demo.
 pub async fn apply_schema(connection: &mut Connection) -> Result<()> {
-    connection
-        .execute_batch(&SCHEMA)
-        .await
-        .context("applying schema")
+    connection.execute_batch(&SCHEMA).context("applying schema")
 }
