@@ -6,7 +6,7 @@ use std::path::Path;
 use anyhow::{Context as _, Result, anyhow};
 use glob::glob;
 
-use turso::Connection;
+use rusqlite::Connection;
 
 use crate::tui_app::State;
 
@@ -29,25 +29,18 @@ impl App {
             .ok_or(anyhow!("cannot use `/` as the db"))?;
         std::fs::create_dir_all(parent).context("creating db parent dir")?;
 
-        let db_path = db_path
-            .to_str()
-            .context("db_path could not be represented as unicode")?;
-        let database = turso::Builder::new_local(db_path)
-            .build()
-            .await
-            .context("building database")?;
-        let mut connection = database.connect().context("connecting to database")?;
+        let connection = rusqlite::Connection::open(&db_path).context("connecting to database")?;
 
         if !db_exists {
-            todo_list::apply_schema(&mut connection)
+            todo_list::apply_schema(&connection)
                 .await
                 .context("applying schema to new database file")
                 .inspect_err(|_err| {
                     // best effort
                     // first the db itself
-                    let _ = std::fs::remove_file(db_path);
+                    let _ = std::fs::remove_file(&db_path);
                     // then ancillary files by glob if necessary
-                    if let Ok(paths) = glob(&format!("{db_path}*")) {
+                    if let Ok(paths) = glob(&format!("{}*", db_path.to_string_lossy())) {
                         for path in paths.flatten() {
                             let _ = std::fs::remove_file(path);
                         }

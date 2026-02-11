@@ -571,10 +571,10 @@ dependencies = [
  "glob",
  "log",
  "ratatui",
+ "rusqlite",
  "smol",
  "todo-list",
  "tui-logger",
- "turso",
 ]
 
 [[package]]
