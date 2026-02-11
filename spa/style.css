@@ -1,0 +1,121 @@
+:root {
+    --bg: #f7f8fb;
+    --card: #fff;
+    --accent: #2b6cb0;
+    --danger: #e53e3e;
+    --muted: #6b7280;
+}
+
+* {
+    box-sizing: border-box
+}
+
+body {
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
+    margin: 0;
+    background: var(--bg);
+    color: #111827;
+}
+
+#app {
+    max-width: 1000px;
+    margin: 24px auto;
+    padding: 16px
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px
+}
+
+main {
+    display: flex;
+    gap: 16px
+}
+
+aside#lists-pane {
+    width: 260px;
+    background: var(--card);
+    padding: 12px;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06)
+}
+
+section#items-pane {
+    flex: 1;
+    background: var(--card);
+    padding: 12px;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06)
+}
+
+ul {
+    list-style: none;
+    padding: 0;
+    margin: 8px 0
+}
+
+li {
+    padding: 8px;
+    border-radius: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center
+}
+
+li:hover {
+    background: #f3f4f6
+}
+
+.controls {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px
+}
+
+.controls input {
+    flex: 1;
+    padding: 8px;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px
+}
+
+button {
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 0;
+    background: var(--accent);
+    color: white;
+    cursor: pointer
+}
+
+button.danger {
+    background: var(--danger)
+}
+
+.hidden {
+    display: none
+}
+
+.item-left {
+    display: flex;
+    gap: 8px;
+    align-items: center
+}
+
+.item-desc.completed {
+    text-decoration: line-through;
+    color: var(--muted)
+}
+
+.small {
+    font-size: 0.9rem;
+    color: var(--muted)
+}
+
+#status {
+    font-size: 0.9rem;
+    color: var(--muted)
+}

@@ -1,0 +1,1 @@
+A single-page app designed to showcase the use case where Turso is embedded in a Rust/WASM project.

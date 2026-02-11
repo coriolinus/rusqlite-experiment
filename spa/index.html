@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>FFI Todo App</title>
+    <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+    <div id="app">
+        <header>
+            <h1>Todo Lists</h1>
+            <div id="status">Initializing...</div>
+        </header>
+
+        <main>
+            <aside id="lists-pane">
+                <h2>Lists</h2>
+                <ul id="lists"></ul>
+                <div class="controls">
+                    <input id="new-list-title" placeholder="New list title" />
+                    <button id="create-list">Create List</button>
+                </div>
+            </aside>
+
+            <section id="items-pane">
+                <h2 id="current-list-title">No list loaded</h2>
+                <div id="items-controls" class="hidden">
+                    <input id="new-item-desc" placeholder="New item description" />
+                    <button id="add-item">Add Item</button>
+                    <button id="save-list">Save List</button>
+                    <button id="delete-list" class="danger">Delete List</button>
+                </div>
+
+                <ul id="items"></ul>
+            </section>
+        </main>
+    </div>
+
+    <script src="ffi.js"></script>
+    <script type="module" src="main.ts"></script>
+</body>
+
+</html>
