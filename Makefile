@@ -33,15 +33,21 @@ $(PKG_OUT) &: $(RUST_SOURCES)
 	wasm-pack build ffi --target web
 
 SPA_SOURCES := spa/index.html spa/main.ts spa/style.css
-SPA_OUT := spa/out/index.html
+SPA_OUT := spa/out/index.html spa/out/ffi_bg.wasm
 
-$(SPA_OUT) := $(PKG_OUT) $(SPA_SOURCES)
+$(SPA_OUT) &: $(PKG_OUT) $(SPA_SOURCES)
 	rm -rf spa/out
 	cp $(PKG_OUT) spa
 	bun build spa/index.html --outdir spa/out --target browser 
+	cp spa/ffi_bg.wasm spa/out/
+
+.PHONY: clean-spa
+clean-spa: ## clean up the spa
+	rm -rf spa/out
+	rm $(addprefix spa/,$(COMPILED_WASM))
 
 spa: $(SPA_OUT) ## build the single-page app
 
 .PHONY: serve-spa
 serve-spa: $(SPA_OUT) ## serve the single-page app locally
-	miniserve --spa --index index.html spa/out
+	miniserve --index index.html spa/out
