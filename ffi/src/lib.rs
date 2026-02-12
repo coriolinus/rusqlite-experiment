@@ -8,11 +8,38 @@ use wasm_bindgen::prelude::*;
 pub use database::Database;
 pub use error::{Context, Error, Result};
 
+macro_rules! console_log {
+    ($e:expr) => {{
+        let js_value = JsValue::from($e);
+        web_sys::console::log_1(&js_value);
+    }};
+    ($e:expr; $( $k:literal => $v:expr ),*) => {{
+        let json = serde_json::json!({
+            "msg": $e,
+            "context": {
+                $(
+                    $k: $v
+                ),*
+            }
+        });
+        let js_value = serde_wasm_bindgen::to_value(&json).unwrap_or_else(Into::into);
+        web_sys::console::table_1(&js_value);
+    }};
+}
+
+macro_rules! log_call {
+    ($e:expr => $f:expr) => {{
+        let result = $f;
+        console_log!($e; "success" => result.is_ok());
+        result
+    }};
+}
+
 #[wasm_bindgen]
 pub async fn apply_schema(database: &mut Database) -> Result<()> {
-    todo_list::apply_schema(&mut database.connection)
+    log_call!("called apply_schema" => todo_list::apply_schema(&mut database.connection)
         .await
-        .map_err(Into::into)
+        .map_err(Into::into))
 }
 
 #[wasm_bindgen]
@@ -33,6 +60,7 @@ impl Item {
     }
 
     pub fn set_description(&mut self, description: String) {
+        console_log!("called Item::set_description");
         self.0.set_description(description);
     }
 
@@ -41,6 +69,7 @@ impl Item {
     }
 
     pub fn set_is_completed(&mut self, is_completed: bool) {
+        console_log!("called Item::set_is_completed");
         self.0.set_is_completed(is_completed);
     }
 
@@ -68,6 +97,7 @@ impl TodoList {
     }
 
     pub fn set_title(&mut self, title: String) {
+        console_log!("called TodoList::set_title");
         self.0.set_title(title);
     }
 
@@ -93,7 +123,9 @@ impl TodoList {
     /// Get all todo lists with their ids
     #[wasm_bindgen(unchecked_return_type = "Record<number, string>")]
     pub async fn list_all(database: &Database) -> Result<JsValue> {
-        let items = todo_list::TodoList::list_all(&database.connection).await?;
+        let items = log_call!(
+            "called TodoList::list_all" => todo_list::TodoList::list_all(&database.connection).await
+        )?;
         let items = items
             .into_iter()
             .map(|(id, title)| (id.into(), title))
@@ -104,21 +136,19 @@ impl TodoList {
 
     /// Create a todo list
     pub async fn new(database: &Database, title: String) -> Result<Self> {
-        todo_list::TodoList::new(&database.connection, title)
-            .await
+        log_call!("called TodoList::new" => todo_list::TodoList::new(&database.connection, title).await)
             .map(Self)
             .map_err(Into::into)
     }
 
     /// Save a todo list and all its items
     pub async fn save(&mut self, database: &Database) -> Result<()> {
-        self.0.save(&database.connection).await.map_err(Into::into)
+        log_call!("called TodoList::save" => self.0.save(&database.connection).await.map_err(Into::into))
     }
 
     /// Load a todo list by its id
     pub async fn load(database: &Database, id: u32) -> Result<Self> {
-        todo_list::TodoList::load(&database.connection, id.into())
-            .await
+        log_call!("called TodoList::load" => todo_list::TodoList::load(&database.connection, id.into()).await)
             .map(Self)
             .map_err(Into::into)
     }
@@ -127,8 +157,7 @@ impl TodoList {
     ///
     /// Returns `true` if a list existed for that id.
     pub async fn delete(database: &Database, id: u32) -> Result<bool> {
-        todo_list::TodoList::delete(&database.connection, id.into())
-            .await
+        log_call!("called TodoList::delete" => todo_list::TodoList::delete(&database.connection, id.into()).await)
             .map_err(Into::into)
     }
 
@@ -136,20 +165,20 @@ impl TodoList {
     ///
     /// Returns the item id.
     pub async fn add_item(&mut self, database: &Database, description: String) -> Result<u32> {
-        self.0
-            .add_item(&database.connection, description)
-            .await
-            .map(Into::into)
-            .map_err(Into::into)
+        log_call!(
+            "called TodoList::add_item" => self.0.add_item(&database.connection, description).await
+        )
+        .map(Into::into)
+        .map_err(Into::into)
     }
 
     /// Remove an item from this todo list.
     ///
     /// Returns `true` if an item existed for that id.
     pub async fn remove_item(&mut self, database: &Database, item_id: u32) -> Result<bool> {
-        self.0
-            .remove_item(&database.connection, item_id.into())
-            .await
-            .map_err(Into::into)
+        log_call!(
+            "called TodoList::remove_item" => self.0.remove_item(&database.connection, item_id.into()).await
+        )
+        .map_err(Into::into)
     }
 }
