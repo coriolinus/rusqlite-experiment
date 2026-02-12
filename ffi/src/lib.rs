@@ -37,9 +37,15 @@ macro_rules! log_call {
 
 #[wasm_bindgen]
 pub async fn apply_schema(database: &mut Database) -> Result<()> {
-    log_call!("called apply_schema" => todo_list::apply_schema(&mut database.connection)
-        .await
-        .map_err(Into::into))
+    let mut result = todo_list::apply_schema(&mut database.connection).await;
+    if let Err(err) = &result
+        && err.to_string() == "applying schema"
+        && let Some(err) = err.source()
+        && err.to_string().ends_with("already exists")
+    {
+        result = Ok(());
+    }
+    log_call!("called apply_schema" => result.map_err(Into::into))
 }
 
 #[wasm_bindgen]
