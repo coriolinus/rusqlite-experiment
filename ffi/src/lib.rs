@@ -1,8 +1,6 @@
 mod database;
 mod error;
 
-use std::collections::HashMap;
-
 use wasm_bindgen::prelude::*;
 
 pub use database::Database;
@@ -127,15 +125,14 @@ impl TodoList {
     }
 
     /// Get all todo lists with their ids
-    #[wasm_bindgen(unchecked_return_type = "Record<number, string>")]
+    #[wasm_bindgen(unchecked_return_type = "[number, string][]")]
     pub async fn list_all(database: &Database) -> Result<JsValue> {
         let items = log_call!(
             "called TodoList::list_all" => todo_list::TodoList::list_all(&database.connection).await
-        )?;
-        let items = items
-            .into_iter()
-            .map(|(id, title)| (id.into(), title))
-            .collect::<HashMap<u32, _>>();
+        )?
+        .into_iter()
+        .map(|(id, name)| (u32::from(id), name))
+        .collect::<Vec<_>>();
         let items = serde_wasm_bindgen::to_value(&items).map_err(JsValue::from)?;
         Ok(items)
     }

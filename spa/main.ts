@@ -51,7 +51,7 @@ async function refreshLists(): Promise<void> {
     if (!db) return;
     try {
         const all = await TodoList.list_all(db);
-        const entries = Object.entries(all).map(([id, title]) => ({ id: Number(id), title }));
+        const entries = all.map(([id, title]) => ({ id: Number(id), title }));
         entries.sort((a, b) => a.id - b.id);
         for (const e of entries) {
             const li = document.createElement('li');
