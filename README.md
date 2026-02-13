@@ -42,3 +42,7 @@ make serve-spa
 
 
 ## Notes and Findings
+
+1. Wasm-bindgen is perfectly happy to call `&mut self` methods on JS objects.
+2. Those calls appear to succeed at the DB level.
+3. But the database isn't modified. More investigation needed.

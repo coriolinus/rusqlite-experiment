@@ -1,265 +1,404 @@
-import wasm_init, { Database, TodoList, apply_schema, Item } from "./ffi";
+import wasm_init, { Database, TodoList, apply_schema } from "./ffi";
 
+/**
+ * Application state
+ */
+class AppState {
+    db: Database | null = null;
+    currentListId: number | null = null;
+    currentList: TodoList | null = null;
 
-let db: Database | null = null;
-let currentList: TodoList | null = null;
+    setDatabase(db: Database): void {
+        this.db = db;
+    }
 
-const $ = <T extends HTMLElement>(sel: string): T => {
-    const el = document.querySelector(sel);
-    if (!el) throw new Error(`Missing element: ${sel}`);
-    return el as T;
-};
+    async loadList(id: number): Promise<void> {
+        if (!this.db) throw new Error("Database not initialized");
 
-const statusEl = $('#status') as HTMLDivElement;
-const listsEl = $('#lists') as HTMLUListElement;
-const itemsEl = $('#items') as HTMLUListElement;
-const currentListTitleEl = $('#current-list-title') as HTMLHeadingElement;
-const itemsControlsEl = $('#items-controls') as HTMLDivElement;
+        // Free the previous list if it exists
+        if (this.currentList) {
+            try { this.currentList.free(); } catch { /* ignore */ }
+        }
 
-const newListTitleInput = $('#new-list-title') as HTMLInputElement;
-const createListBtn = $('#create-list') as HTMLButtonElement;
-const newItemDescInput = $('#new-item-desc') as HTMLInputElement;
-const addItemBtn = $('#add-item') as HTMLButtonElement;
-const saveListBtn = $('#save-list') as HTMLButtonElement;
-const deleteListBtn = $('#delete-list') as HTMLButtonElement;
+        this.currentList = await TodoList.load(this.db, id);
+        this.currentListId = id;
+    }
 
-function setStatus(text: string): void {
-    statusEl.textContent = text;
-}
+    unloadList(): void {
+        if (this.currentList) {
+            try { this.currentList.free(); } catch { /* ignore */ }
+        }
+        this.currentList = null;
+        this.currentListId = null;
+    }
 
-function clearChildren(el: HTMLElement): void {
-    while (el.firstChild) el.removeChild(el.firstChild);
-}
+    async saveCurrentList(): Promise<void> {
+        if (!this.db || !this.currentList) {
+            throw new Error("No list loaded");
+        }
+        await this.currentList.save(this.db);
+    }
 
-async function init(): Promise<void> {
-    await wasm_init("./ffi_bg.wasm");
-    try {
-        setStatus('Connecting to database...');
-        db = await Database.connect('todo_app');
-        await apply_schema(db);
-        setStatus('Loading lists...');
-        await refreshLists();
-        setStatus('Ready');
-    } catch (err: unknown) {
-        console.error(err);
-        setStatus('Error initializing database: ' + (err instanceof Error ? err.message : String(err)));
+    async reloadCurrentList(): Promise<void> {
+        if (this.currentListId === null) return;
+        await this.loadList(this.currentListId);
     }
 }
 
-async function refreshLists(): Promise<void> {
-    clearChildren(listsEl);
-    if (!db) return;
-    try {
-        const all = await TodoList.list_all(db);
+/**
+ * DOM element references
+ */
+class DOMElements {
+    readonly status = this.get<HTMLDivElement>('#status');
+    readonly listsEl = this.get<HTMLUListElement>('#lists');
+    readonly itemsEl = this.get<HTMLUListElement>('#items');
+    readonly currentListTitle = this.get<HTMLHeadingElement>('#current-list-title');
+    readonly itemsControls = this.get<HTMLDivElement>('#items-controls');
+    readonly newListTitleInput = this.get<HTMLInputElement>('#new-list-title');
+    readonly createListBtn = this.get<HTMLButtonElement>('#create-list');
+    readonly newItemDescInput = this.get<HTMLInputElement>('#new-item-desc');
+    readonly addItemBtn = this.get<HTMLButtonElement>('#add-item');
+    readonly saveListBtn = this.get<HTMLButtonElement>('#save-list');
+    readonly deleteListBtn = this.get<HTMLButtonElement>('#delete-list');
+
+    private get<T extends HTMLElement>(selector: string): T {
+        const el = document.querySelector(selector);
+        if (!el) throw new Error(`Missing element: ${selector}`);
+        return el as T;
+    }
+
+    clearChildren(el: HTMLElement): void {
+        while (el.firstChild) {
+            el.removeChild(el.firstChild);
+        }
+    }
+}
+
+/**
+ * Main application controller
+ */
+class TodoApp {
+    private state = new AppState();
+    private dom = new DOMElements();
+
+    async init(): Promise<void> {
+        this.setStatus('Connecting to database...');
+        await wasm_init("./ffi_bg.wasm");
+
+        const db = await Database.connect('todo_app');
+        await apply_schema(db);
+        this.state.setDatabase(db);
+
+        this.setStatus('Loading lists...');
+        await this.renderLists();
+
+        this.setStatus('Ready');
+        this.attachEventListeners();
+    }
+
+    private setStatus(text: string): void {
+        this.dom.status.textContent = text;
+    }
+
+    private attachEventListeners(): void {
+        this.dom.createListBtn.addEventListener('click', () => this.handleCreateList());
+        this.dom.addItemBtn.addEventListener('click', () => this.handleAddItem());
+        this.dom.saveListBtn.addEventListener('click', () => this.handleSaveList());
+        this.dom.deleteListBtn.addEventListener('click', () => this.handleDeleteList());
+    }
+
+    // ==================== List Management ====================
+
+    private async renderLists(): Promise<void> {
+        this.dom.clearChildren(this.dom.listsEl);
+
+        if (!this.state.db) return;
+
+        const all = await TodoList.list_all(this.state.db);
         const entries = all.map(([id, title]) => ({ id: Number(id), title }));
         entries.sort((a, b) => a.id - b.id);
-        for (const e of entries) {
-            const li = document.createElement('li');
-            const left = document.createElement('div');
-            left.className = 'item-left';
-            const titleSpan = document.createElement('span');
-            titleSpan.textContent = e.title;
-            const idSpan = document.createElement('span');
-            idSpan.className = 'small';
-            idSpan.textContent = `#${e.id}`;
-            left.appendChild(titleSpan);
-            left.appendChild(idSpan);
 
-            const loadBtn = document.createElement('button');
-            loadBtn.textContent = 'Load';
-            loadBtn.onclick = () => void loadList(e.id);
-
-            li.appendChild(left);
-            li.appendChild(loadBtn);
-            listsEl.appendChild(li);
+        for (const entry of entries) {
+            const li = this.createListElement(entry);
+            this.dom.listsEl.appendChild(li);
         }
-    } catch (err: unknown) {
-        console.error(err);
-        setStatus('Failed to list todo lists: ' + (err instanceof Error ? err.message : String(err)));
     }
-}
 
-async function createList(): Promise<void> {
-    if (!db) return;
-    const title = newListTitleInput.value.trim();
-    if (!title) return;
-    setStatus('Creating list...');
-    try {
-        const list = await TodoList.new(db, title);
-        await list.save(db);
-        newListTitleInput.value = '';
-        await refreshLists();
-        setStatus('List created');
-        await loadList(list.id());
-    } catch (err: unknown) {
-        console.error(err);
-        setStatus('Failed to create list: ' + (err instanceof Error ? err.message : String(err)));
+    private createListElement(entry: { id: number; title: string }): HTMLLIElement {
+        const li = document.createElement('li');
+
+        const left = document.createElement('div');
+        left.className = 'item-left';
+
+        const titleSpan = document.createElement('span');
+        titleSpan.textContent = entry.title;
+
+        const idSpan = document.createElement('span');
+        idSpan.className = 'small';
+        idSpan.textContent = `#${entry.id}`;
+
+        left.appendChild(titleSpan);
+        left.appendChild(idSpan);
+
+        const loadBtn = document.createElement('button');
+        loadBtn.textContent = 'Load';
+        loadBtn.onclick = () => this.handleLoadList(entry.id);
+
+        li.appendChild(left);
+        li.appendChild(loadBtn);
+
+        return li;
     }
-}
 
-async function loadList(id: number): Promise<void> {
-    if (!db) return;
-    setStatus('Loading list #' + id + '...');
-    try {
-        if (currentList) {
-            try { currentList.free(); } catch { }
-            currentList = null;
+    private async handleCreateList(): Promise<void> {
+        if (!this.state.db) return;
+
+        const title = this.dom.newListTitleInput.value.trim();
+        if (!title) return;
+
+        try {
+            this.setStatus('Creating list...');
+            const list = await TodoList.new(this.state.db, title);
+            await list.save(this.state.db);
+
+            this.dom.newListTitleInput.value = '';
+            await this.renderLists();
+
+            this.setStatus('List created');
+            await this.handleLoadList(list.id());
+        } catch (err) {
+            console.error(err);
+            this.setStatus('Failed to create list: ' + this.getErrorMessage(err));
         }
-        currentList = await TodoList.load(db, id);
-        renderCurrentList();
-        setStatus('List loaded');
-    } catch (err: unknown) {
-        console.error(err);
-        setStatus('Failed to load list: ' + (err instanceof Error ? err.message : String(err)));
     }
-}
 
-function renderCurrentList(): void {
-    clearChildren(itemsEl);
-    if (!currentList) {
-        currentListTitleEl.textContent = 'No list loaded';
-        itemsControlsEl.classList.add('hidden');
-        return;
+    private async handleLoadList(id: number): Promise<void> {
+        try {
+            this.setStatus(`Loading list #${id}...`);
+            await this.state.loadList(id);
+            this.renderItems();
+            this.setStatus('List loaded');
+        } catch (err) {
+            console.error(err);
+            this.setStatus('Failed to load list: ' + this.getErrorMessage(err));
+        }
     }
-    currentListTitleEl.textContent = currentList.title();
-    itemsControlsEl.classList.remove('hidden');
 
-    const ids = currentList.item_ids();
-    for (let i = 0; i < ids.length; i++) {
-        const itemId = ids[i];
-        const item = currentList.item(itemId);
-        if (!item) continue;
+    private async handleDeleteList(): Promise<void> {
+        if (!this.state.db || !this.state.currentList) return;
+        if (!confirm('Delete this list? This cannot be undone.')) return;
+
+        try {
+            const id = this.state.currentList.id();
+            const ok = await TodoList.delete(this.state.db, id);
+
+            if (ok) {
+                this.setStatus('List deleted');
+                this.state.unloadList();
+                this.renderItems();
+                await this.renderLists();
+            } else {
+                this.setStatus('List not found');
+            }
+        } catch (err) {
+            console.error(err);
+            this.setStatus('Failed to delete list: ' + this.getErrorMessage(err));
+        }
+    }
+
+    private async handleSaveList(): Promise<void> {
+        try {
+            this.setStatus('Saving list...');
+            await this.state.saveCurrentList();
+            this.setStatus('List saved');
+            await this.renderLists();
+        } catch (err) {
+            console.error(err);
+            this.setStatus('Failed to save list: ' + this.getErrorMessage(err));
+        }
+    }
+
+    // ==================== Item Management ====================
+
+    private renderItems(): void {
+        this.dom.clearChildren(this.dom.itemsEl);
+
+        if (!this.state.currentList) {
+            this.dom.currentListTitle.textContent = 'No list loaded';
+            this.dom.itemsControls.classList.add('hidden');
+            return;
+        }
+
+        this.dom.currentListTitle.textContent = this.state.currentList.title();
+        this.dom.itemsControls.classList.remove('hidden');
+
+        const itemIds = this.state.currentList.item_ids();
+        for (let i = 0; i < itemIds.length; i++) {
+            const itemId = itemIds[i];
+            const itemEl = this.createItemElement(itemId);
+            if (itemEl) {
+                this.dom.itemsEl.appendChild(itemEl);
+            }
+        }
+    }
+
+    private createItemElement(itemId: number): HTMLLIElement | null {
+        if (!this.state.currentList) return null;
+
+        const item = this.state.currentList.item(itemId);
+        if (!item) return null;
 
         const li = document.createElement('li');
 
+        // Left side: checkbox and description
         const left = document.createElement('div');
         left.className = 'item-left';
 
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.checked = item.is_completed();
-        checkbox.onchange = async () => {
-            item.set_is_completed(checkbox.checked);
-            try {
-                await currentList!.save(db!);
-                renderCurrentList();
-            } catch (err: unknown) {
-                console.error(err);
-                setStatus('Failed to save after toggle: ' + (err instanceof Error ? err.message : String(err)));
-            }
-        };
+        checkbox.onchange = () => this.handleToggleItem(itemId, checkbox.checked);
 
         const desc = document.createElement('span');
         desc.className = 'item-desc';
-        if (item.is_completed()) desc.classList.add('completed');
+        if (item.is_completed()) {
+            desc.classList.add('completed');
+        }
         desc.textContent = item.description();
 
         left.appendChild(checkbox);
         left.appendChild(desc);
 
+        // Right side: buttons
         const right = document.createElement('div');
         right.style.display = 'flex';
         right.style.gap = '8px';
 
         const editBtn = document.createElement('button');
         editBtn.textContent = 'Edit';
-        editBtn.onclick = () => editItem(item);
+        editBtn.onclick = () => this.handleEditItem(itemId);
 
         const removeBtn = document.createElement('button');
         removeBtn.textContent = 'Remove';
         removeBtn.className = 'danger';
-        removeBtn.onclick = async () => {
-            try {
-                const ok = await currentList!.remove_item(db!, item.id());
-                if (ok) {
-                    await currentList!.save(db!);
-                    renderCurrentList();
-                    setStatus('Item removed');
-                } else {
-                    setStatus('Item not found');
-                }
-            } catch (err: unknown) {
-                console.error(err);
-                setStatus('Failed to remove item: ' + (err instanceof Error ? err.message : String(err)));
-            }
-        };
+        removeBtn.onclick = () => this.handleRemoveItem(itemId);
 
         right.appendChild(editBtn);
         right.appendChild(removeBtn);
 
         li.appendChild(left);
         li.appendChild(right);
-        itemsEl.appendChild(li);
-    }
-}
 
-function editItem(item: Item): void {
-    const newDesc = prompt('Edit item description', item.description());
-    if (newDesc === null) return;
-    item.set_description(newDesc);
-    if (!currentList || !db) return;
-    currentList.save(db).then(() => renderCurrentList()).catch(err => {
-        console.error(err);
-        setStatus('Failed to save after edit: ' + (err instanceof Error ? err.message : String(err)));
-    });
-}
-
-async function addItem(): Promise<void> {
-    if (!currentList || !db) {
-        alert('Load a list first');
-        return;
+        return li;
     }
-    const desc = newItemDescInput.value.trim();
-    if (!desc) return;
-    try {
-        await currentList.add_item(db, desc);
-        await currentList.save(db);
-        newItemDescInput.value = '';
-        renderCurrentList();
-        setStatus('Item added');
-    } catch (err: unknown) {
-        console.error(err);
-        setStatus('Failed to add item: ' + (err instanceof Error ? err.message : String(err)));
-    }
-}
 
-async function saveList(): Promise<void> {
-    if (!currentList || !db) return;
-    try {
-        await currentList.save(db);
-        setStatus('List saved');
-        await refreshLists();
-    } catch (err: unknown) {
-        console.error(err);
-        setStatus('Failed to save list: ' + (err instanceof Error ? err.message : String(err)));
-    }
-}
+    private async handleToggleItem(itemId: number, checked: boolean): Promise<void> {
+        if (!this.state.currentList || !this.state.db) return;
 
-async function deleteList(): Promise<void> {
-    if (!currentList || !db) return;
-    if (!confirm('Delete this list? This cannot be undone.')) return;
-    try {
-        const ok = await TodoList.delete(db, currentList.id());
-        if (ok) {
-            setStatus('List deleted');
-            try { currentList.free(); } catch { }
-            currentList = null;
-            renderCurrentList();
-            await refreshLists();
-        } else {
-            setStatus('List not found');
+        try {
+            // Get the fresh item and update it
+            const item = this.state.currentList.item(itemId);
+            if (!item) return;
+
+            item.set_is_completed(checked);
+
+            // Save and reload to get fresh state
+            await this.state.saveCurrentList();
+            await this.state.reloadCurrentList();
+
+            // Re-render with fresh data
+            this.renderItems();
+        } catch (err) {
+            console.error(err);
+            this.setStatus('Failed to toggle item: ' + this.getErrorMessage(err));
+            // Reload to restore correct state
+            await this.state.reloadCurrentList();
+            this.renderItems();
         }
-    } catch (err: unknown) {
-        console.error(err);
-        setStatus('Failed to delete list: ' + (err instanceof Error ? err.message : String(err)));
+    }
+
+    private async handleEditItem(itemId: number): Promise<void> {
+        if (!this.state.currentList || !this.state.db) return;
+
+        const item = this.state.currentList.item(itemId);
+        if (!item) return;
+
+        const newDesc = prompt('Edit item description', item.description());
+        if (newDesc === null) return;
+
+        try {
+            item.set_description(newDesc);
+            await this.state.saveCurrentList();
+            await this.state.reloadCurrentList();
+            this.renderItems();
+            this.setStatus('Item updated');
+        } catch (err) {
+            console.error(err);
+            this.setStatus('Failed to edit item: ' + this.getErrorMessage(err));
+            await this.state.reloadCurrentList();
+            this.renderItems();
+        }
+    }
+
+    private async handleRemoveItem(itemId: number): Promise<void> {
+        if (!this.state.currentList || !this.state.db) return;
+
+        try {
+            const ok = await this.state.currentList.remove_item(this.state.db, itemId);
+            if (ok) {
+                await this.state.saveCurrentList();
+                await this.state.reloadCurrentList();
+                this.renderItems();
+                this.setStatus('Item removed');
+            } else {
+                this.setStatus('Item not found');
+            }
+        } catch (err) {
+            console.error(err);
+            this.setStatus('Failed to remove item: ' + this.getErrorMessage(err));
+        }
+    }
+
+    private async handleAddItem(): Promise<void> {
+        if (!this.state.currentList || !this.state.db) {
+            alert('Load a list first');
+            return;
+        }
+
+        const desc = this.dom.newItemDescInput.value.trim();
+        if (!desc) return;
+
+        try {
+            this.setStatus('Adding item...');
+            await this.state.currentList.add_item(this.state.db, desc);
+            await this.state.saveCurrentList();
+            await this.state.reloadCurrentList();
+
+            this.dom.newItemDescInput.value = '';
+            this.renderItems();
+            this.setStatus('Item added');
+        } catch (err) {
+            console.error(err);
+            this.setStatus('Failed to add item: ' + this.getErrorMessage(err));
+        }
+    }
+
+    // ==================== Utilities ====================
+
+    private getErrorMessage(err: unknown): string {
+        return err instanceof Error ? err.message : String(err);
     }
 }
 
-createListBtn.addEventListener('click', () => void createList());
-addItemBtn.addEventListener('click', () => void addItem());
-saveListBtn.addEventListener('click', () => void saveList());
-deleteListBtn.addEventListener('click', () => void deleteList());
+// Initialize the app
+const app = new TodoApp();
 
-window.addEventListener('load', () => {
-    void init();
+window.addEventListener('load', async () => {
+    try {
+        await app.init();
+    } catch (err) {
+        console.error('Failed to initialize app:', err);
+        document.querySelector('#status')!.textContent =
+            'Failed to initialize: ' + (err instanceof Error ? err.message : String(err));
+    }
 });

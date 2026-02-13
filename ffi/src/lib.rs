@@ -69,11 +69,13 @@ impl Item {
     }
 
     pub fn is_completed(&self) -> bool {
-        self.0.is_completed()
+        let is_completed = self.0.is_completed();
+        console_log!("called Item::is_completed"; "is_completed" => is_completed);
+        is_completed
     }
 
     pub fn set_is_completed(&mut self, is_completed: bool) {
-        console_log!("called Item::set_is_completed");
+        console_log!("called Item::set_is_completed"; "is_completed" => is_completed);
         self.0.set_is_completed(is_completed);
     }
 
