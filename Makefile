@@ -28,8 +28,9 @@ RUST_SOURCES := $(WORKSPACE_CARGO_FILES) $(CRATE_MANIFESTS) $(RUST_RS_FILES)
 PKG_DIR := ffi/pkg/
 COMPILED_WASM := ffi_bg.js ffi_bg.wasm ffi.js 
 PKG_OUT := $(addprefix $(PKG_DIR),$(COMPILED_WASM))
+FFI_D_TS := ffi/pkg/ffi.d.ts
 
-$(PKG_OUT) &: $(RUST_SOURCES)
+$(PKG_OUT) $(FFI_D_TS) &: $(RUST_SOURCES)
 	wasm-pack build ffi --target web
 
 SPA_SOURCES := spa/index.html spa/main.ts spa/style.css
@@ -51,3 +52,11 @@ spa: $(SPA_OUT) ## build the single-page app
 .PHONY: serve-spa
 serve-spa: $(SPA_OUT) ## serve the single-page app locally
 	miniserve --index index.html spa/out
+
+SPA_ZIP := spa.zip
+SPA_FILES := $(shell git ls-files spa) $(FFI_D_TS)
+$(SPA_ZIP): $(SPA_FILES)
+	zip -1uj $(SPA_ZIP) $(SPA_FILES)
+
+.PHONY: spa-zip
+spa-zip: $(SPA_ZIP) ## zip up the spa portion of the app with ffi.d.ts
