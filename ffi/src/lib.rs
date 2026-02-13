@@ -25,12 +25,46 @@ macro_rules! console_log {
     }};
 }
 
+fn elide_ok<T, E>(result: &Result<T, E>) -> String
+where
+    E: std::fmt::Display,
+{
+    match result {
+        Ok(_) => "OK".into(),
+        Err(err) => err.to_string(),
+    }
+}
+
+/// Log a function call.
+///
+/// In its most complex form, offers full logging of a function including parameters and result.
+/// The name must be a literal string; the params can be any expression evaluating to a debug thing.
+/// `result_map` must be a closure or function which accepts the borrowed form of the result of the
+/// function, and returns something with a `Debug` impl.
+///
+/// If called with `elide_ok` in place of `result_map`, the function must return a result.
+/// `Ok(_)` are replaced with the string "Ok", and errors are printed.
+///
+/// If `result_map` is omitted, the entire return value is emitted in debug form.
 macro_rules! log_call {
-    ($e:expr => $f:expr) => {{
+    ($name:literal ($( $param:expr ),*) => $f:expr; $result_map:expr) => {{
+        let mut log_str = $name.to_string();
+        log_str.push('(');
+        $(
+            log_str.push_str(&format!("{:?}, ", $param));
+        )*
+        log_str.push(')');
+
         let result = $f;
-        console_log!($e; "success" => result.is_ok());
+        log_str.push_str(&format!(" -> {:?}", $result_map(&result)));
+        console_log!(log_str);
         result
     }};
+    ($name:literal ($( $param:expr ),*) => $f:expr) => {
+        {
+            log_call!($name ($($param),*) => $f; ::std::convert::identity)
+        }
+    }
 }
 
 #[wasm_bindgen]
@@ -43,7 +77,7 @@ pub async fn apply_schema(database: &mut Database) -> Result<()> {
     {
         result = Ok(());
     }
-    log_call!("called apply_schema" => result.map_err(Into::into))
+    log_call!("apply_schema"() => result.map_err(Into::into))
 }
 
 #[wasm_bindgen]
@@ -63,20 +97,8 @@ impl Item {
         self.0.description().to_owned()
     }
 
-    pub fn set_description(&mut self, description: String) {
-        console_log!("called Item::set_description");
-        self.0.set_description(description);
-    }
-
     pub fn is_completed(&self) -> bool {
-        let is_completed = self.0.is_completed();
-        console_log!("called Item::is_completed"; "is_completed" => is_completed);
-        is_completed
-    }
-
-    pub fn set_is_completed(&mut self, is_completed: bool) {
-        console_log!("called Item::set_is_completed"; "is_completed" => is_completed);
-        self.0.set_is_completed(is_completed);
+        log_call!("Item::is_completed"() => self.0.is_completed())
     }
 
     /// Unix timestamp of the creation time of this item
@@ -92,6 +114,12 @@ impl Item {
 #[wasm_bindgen]
 pub struct TodoList(todo_list::TodoList);
 
+impl TodoList {
+    fn item_mut(&mut self, item_id: u32) -> Option<&mut todo_list::Item> {
+        self.0.item_mut(item_id.into())
+    }
+}
+
 #[wasm_bindgen]
 impl TodoList {
     pub fn id(&self) -> u32 {
@@ -103,7 +131,6 @@ impl TodoList {
     }
 
     pub fn set_title(&mut self, title: String) {
-        console_log!("called TodoList::set_title");
         self.0.set_title(title);
     }
 
@@ -126,11 +153,33 @@ impl TodoList {
         self.0.item(item_id.into()).cloned().map(Item)
     }
 
+    /// Update an item's description.
+    ///
+    /// Returns `Some(dirty)` if the item was found, where `dirty` indicates whether or not item will update on the next save.
+    /// Returns `None` if the item was not found.
+    pub fn set_item_description(&mut self, item_id: u32, description: String) -> Option<bool> {
+        let item = self.item_mut(item_id)?;
+        item.set_description(description);
+        Some(item.dirty())
+    }
+
+    /// Update an item's checked status.
+    ///
+    /// Returns `Some(dirty)` if the item was found, where `dirty` indicates whether or not the item will update on the next save.
+    /// Returns `None` if the item was not found.
+    pub fn set_item_completed(&mut self, item_id: u32, is_completed: bool) -> Option<bool> {
+        let item = self.item_mut(item_id)?;
+        item.set_is_completed(is_completed);
+        Some(item.dirty())
+    }
+
     /// Get all todo lists with their ids
     #[wasm_bindgen(unchecked_return_type = "[number, string][]")]
     pub async fn list_all(database: &Database) -> Result<JsValue> {
         let items = log_call!(
-            "called TodoList::list_all" => todo_list::TodoList::list_all(&database.connection).await
+            "TodoList::list_all"() =>
+            todo_list::TodoList::list_all(&database.connection).await;
+            elide_ok
         )?
         .into_iter()
         .map(|(id, name)| (u32::from(id), name))
@@ -141,28 +190,36 @@ impl TodoList {
 
     /// Create a todo list
     pub async fn new(database: &Database, title: String) -> Result<Self> {
-        log_call!("called TodoList::new" => todo_list::TodoList::new(&database.connection, title).await)
-            .map(Self)
-            .map_err(Into::into)
+        log_call!(
+            "TodoList::new"(title) =>
+            todo_list::TodoList::new(&database.connection, title).await;
+            elide_ok
+        )
+        .map(Self)
+        .map_err(Into::into)
     }
 
     /// Save a todo list and all its items
     pub async fn save(&mut self, database: &Database) -> Result<()> {
-        log_call!("called TodoList::save" => self.0.save(&database.connection).await.map_err(Into::into))
+        log_call!("TodoList::save"() => self.0.save(&database.connection).await.map_err(Into::into))
     }
 
     /// Load a todo list by its id
     pub async fn load(database: &Database, id: u32) -> Result<Self> {
-        log_call!("called TodoList::load" => todo_list::TodoList::load(&database.connection, id.into()).await)
-            .map(Self)
-            .map_err(Into::into)
+        log_call!(
+            "TodoList::load"() =>
+            todo_list::TodoList::load(&database.connection, id.into()).await;
+            elide_ok
+        )
+        .map(Self)
+        .map_err(Into::into)
     }
 
     /// Delete a todo list by its id
     ///
     /// Returns `true` if a list existed for that id.
     pub async fn delete(database: &Database, id: u32) -> Result<bool> {
-        log_call!("called TodoList::delete" => todo_list::TodoList::delete(&database.connection, id.into()).await)
+        log_call!("TodoList::delete"(id) => todo_list::TodoList::delete(&database.connection, id.into()).await)
             .map_err(Into::into)
     }
 
@@ -171,7 +228,8 @@ impl TodoList {
     /// Returns the item id.
     pub async fn add_item(&mut self, database: &Database, description: String) -> Result<u32> {
         log_call!(
-            "called TodoList::add_item" => self.0.add_item(&database.connection, description).await
+            "TodoList::add_item"(description) =>
+            self.0.add_item(&database.connection, description).await
         )
         .map(Into::into)
         .map_err(Into::into)
@@ -182,7 +240,8 @@ impl TodoList {
     /// Returns `true` if an item existed for that id.
     pub async fn remove_item(&mut self, database: &Database, item_id: u32) -> Result<bool> {
         log_call!(
-            "called TodoList::remove_item" => self.0.remove_item(&database.connection, item_id.into()).await
+            "TodoList::remove_item"(item_id) =>
+            self.0.remove_item(&database.connection, item_id.into()).await
         )
         .map_err(Into::into)
     }
