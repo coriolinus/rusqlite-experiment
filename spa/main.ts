@@ -14,7 +14,7 @@ class AppState {
 
     async loadList(id: number): Promise<void> {
         if (!this.db) throw new Error("Database not initialized");
-
+        
         // Free the previous list if it exists
         if (this.currentList) {
             try { this.currentList.free(); } catch { /* ignore */ }
@@ -37,11 +37,6 @@ class AppState {
             throw new Error("No list loaded");
         }
         await this.currentList.save(this.db);
-    }
-
-    async reloadCurrentList(): Promise<void> {
-        if (this.currentListId === null) return;
-        await this.loadList(this.currentListId);
     }
 }
 
@@ -82,16 +77,16 @@ class TodoApp {
     private dom = new DOMElements();
 
     async init(): Promise<void> {
-        this.setStatus('Connecting to database...');
         await wasm_init("./ffi_bg.wasm");
-
+        this.setStatus('Connecting to database...');
+        
         const db = await Database.connect('todo_app');
         await apply_schema(db);
         this.state.setDatabase(db);
 
         this.setStatus('Loading lists...');
         await this.renderLists();
-
+        
         this.setStatus('Ready');
         this.attachEventListeners();
     }
@@ -111,7 +106,7 @@ class TodoApp {
 
     private async renderLists(): Promise<void> {
         this.dom.clearChildren(this.dom.listsEl);
-
+        
         if (!this.state.db) return;
 
         const all = await TodoList.list_all(this.state.db);
@@ -160,10 +155,10 @@ class TodoApp {
             this.setStatus('Creating list...');
             const list = await TodoList.new(this.state.db, title);
             await list.save(this.state.db);
-
+            
             this.dom.newListTitleInput.value = '';
             await this.renderLists();
-
+            
             this.setStatus('List created');
             await this.handleLoadList(list.id());
         } catch (err) {
@@ -191,7 +186,7 @@ class TodoApp {
         try {
             const id = this.state.currentList.id();
             const ok = await TodoList.delete(this.state.db, id);
-
+            
             if (ok) {
                 this.setStatus('List deleted');
                 this.state.unloadList();
@@ -244,7 +239,7 @@ class TodoApp {
 
     private createItemElement(itemId: number): HTMLLIElement | null {
         if (!this.state.currentList) return null;
-
+        
         const item = this.state.currentList.item(itemId);
         if (!item) return null;
 
@@ -296,24 +291,22 @@ class TodoApp {
         if (!this.state.currentList || !this.state.db) return;
 
         try {
-            // Get the fresh item and update it
-            const item = this.state.currentList.item(itemId);
-            if (!item) return;
+            // Use the new set_item_completed method to modify the item directly in the list
+            const result = this.state.currentList.set_item_completed(itemId, checked);
+            
+            if (result === undefined) {
+                this.setStatus('Item not found');
+                return;
+            }
 
-            item.set_is_completed(checked);
-
-            // Save and reload to get fresh state
+            // Save to database
             await this.state.saveCurrentList();
-            await this.state.reloadCurrentList();
-
-            // Re-render with fresh data
+            
+            // Re-render to show updated state
             this.renderItems();
         } catch (err) {
             console.error(err);
             this.setStatus('Failed to toggle item: ' + this.getErrorMessage(err));
-            // Reload to restore correct state
-            await this.state.reloadCurrentList();
-            this.renderItems();
         }
     }
 
@@ -327,16 +320,20 @@ class TodoApp {
         if (newDesc === null) return;
 
         try {
-            item.set_description(newDesc);
+            // Use the new set_item_description method to modify the item directly in the list
+            const result = this.state.currentList.set_item_description(itemId, newDesc);
+            
+            if (result === undefined) {
+                this.setStatus('Item not found');
+                return;
+            }
+
             await this.state.saveCurrentList();
-            await this.state.reloadCurrentList();
             this.renderItems();
             this.setStatus('Item updated');
         } catch (err) {
             console.error(err);
             this.setStatus('Failed to edit item: ' + this.getErrorMessage(err));
-            await this.state.reloadCurrentList();
-            this.renderItems();
         }
     }
 
@@ -347,7 +344,6 @@ class TodoApp {
             const ok = await this.state.currentList.remove_item(this.state.db, itemId);
             if (ok) {
                 await this.state.saveCurrentList();
-                await this.state.reloadCurrentList();
                 this.renderItems();
                 this.setStatus('Item removed');
             } else {
@@ -372,8 +368,7 @@ class TodoApp {
             this.setStatus('Adding item...');
             await this.state.currentList.add_item(this.state.db, desc);
             await this.state.saveCurrentList();
-            await this.state.reloadCurrentList();
-
+            
             this.dom.newItemDescInput.value = '';
             this.renderItems();
             this.setStatus('Item added');
@@ -398,7 +393,7 @@ window.addEventListener('load', async () => {
         await app.init();
     } catch (err) {
         console.error('Failed to initialize app:', err);
-        document.querySelector('#status')!.textContent =
+        document.querySelector('#status')!.textContent = 
             'Failed to initialize: ' + (err instanceof Error ? err.message : String(err));
     }
 });
