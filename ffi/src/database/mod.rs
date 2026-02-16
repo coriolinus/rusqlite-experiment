@@ -15,7 +15,8 @@ pub struct Database {
 impl Database {
     /// Connect to a database
     pub async fn connect(name: &str) -> Result<Self> {
-        // install relaxed-idb persistence layer as default fvs
+        // install relaxed-idb persistence layer as default vfs
+        // note: `RelaxedIdbCfg` sets values including the name, which gets used as the IDB database name
         relaxed_idb::install::<ffi::WasmOsCallback>(&RelaxedIdbCfg::default(), true)
             .await
             .map_err(|err| anyhow!("failed to install relaxed idb vfs: {err}"))?;
