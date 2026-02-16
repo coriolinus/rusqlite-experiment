@@ -119,3 +119,14 @@ button.danger {
     font-size: 0.9rem;
     color: var(--muted)
 }
+
+.sidebar-actions {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #e5e7eb
+}
+
+button.secondary {
+    background: #6b7280;
+    width: 100%
+}
