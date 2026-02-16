@@ -44,5 +44,12 @@ make serve-spa
 ## Notes and Findings
 
 1. Wasm-bindgen is perfectly happy to call `&mut self` methods on JS objects.
-2. Those calls appear to succeed at the DB level.
-3. But the database isn't modified. More investigation needed.
+2. Downloading an unencrypted database takes a little bit of support in the SPA, but isn't unduly complicated overall.
+3. Rusqlite has Cargo features for enabling sqlcipher, but not for Sqlite3 Multiple Ciphers.
+    - Do we need to add a feature, or are we happy using sqlite3-mc on wasm and sqlcipher on non-wasm?
+    - Are they compatible with each other if the keys are known?
+    - PRAGMA statements for basic sql operations appear to be equivalent
+    - But the recommended way to tell "is this database encrypted" is to look at the first 16 bytes: if they match `b"SQLite format 3\0"`, it's not encrypted; otherwise it is.
+        - Easy on native, hard on WASM when that's abstracted behind a VFS we don't have real access to 
+        - But maybe we can hack together something that inspects the appropriate IndexedDb table
+    - TBD: how to determine whether `rusqlite` delegates eventually down to [`RelaxedIdbUtil::import_db_unchecked`](https://docs.rs/sqlite-wasm-vfs/latest/sqlite_wasm_vfs/relaxed_idb/struct.RelaxedIdbUtil.html#method.import_db_unchecked) instead of [`import_db`](https://docs.rs/sqlite-wasm-vfs/latest/sqlite_wasm_vfs/relaxed_idb/struct.RelaxedIdbUtil.html#method.import_db), which is necessary if the database is encrypted?
