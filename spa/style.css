@@ -219,13 +219,3 @@ button.secondary {
 .modal-buttons button {
     flex: 1
 }
-
-.modal-error {
-    margin-top: 12px;
-    padding: 8px;
-    background: #fee2e2;
-    color: #991b1b;
-    border: 1px solid #fca5a5;
-    border-radius: 6px;
-    font-size: 0.9rem
-}

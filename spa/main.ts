@@ -66,7 +66,6 @@ class DOMElements {
     readonly deleteListBtn = this.get<HTMLButtonElement>('#delete-list');
     readonly downloadDbBtn = this.get<HTMLButtonElement>('#download-db');
     readonly checkEncryptionBtn = this.get<HTMLButtonElement>('#check-encryption');
-    readonly setEncryptionBtn = this.get<HTMLButtonElement>('#set-encryption');
     readonly encryptionStatus = this.get<HTMLDivElement>('#encryption-status');
     readonly passphraseModal = this.get<HTMLDivElement>('#passphrase-modal');
     readonly modalTitle = this.get<HTMLHeadingElement>('#modal-title');
@@ -75,7 +74,6 @@ class DOMElements {
     readonly passphraseInput = this.get<HTMLInputElement>('#passphrase-input');
     readonly modalSubmit = this.get<HTMLButtonElement>('#modal-submit');
     readonly modalCancel = this.get<HTMLButtonElement>('#modal-cancel');
-    readonly modalError = this.get<HTMLDivElement>('#modal-error');
 
     private get<T extends HTMLElement>(selector: string): T {
         const el = document.querySelector(selector);
@@ -103,43 +101,62 @@ class TodoApp {
         console.log('[INIT] WASM initialized');
         this.setStatus('Connecting to database...');
 
-        // Ensure modal is hidden on startup
-        console.log('[INIT] Hiding modal on startup');
-        this.hideModal();
-
         const db = await Database.connect('todo_app');
         console.log('[INIT] Database connected');
         this.state.setDatabase(db);
 
-        // Check if database is encrypted before doing anything else
+        // Check if database exists and is encrypted
         console.log('[INIT] Checking if database is encrypted...');
-        const isEncrypted = await db.is_encrypted();
-        console.log('[INIT] Database encrypted:', isEncrypted);
+        let isEncrypted = false;
+        let dbExists = false;
+        try {
+            isEncrypted = await db.is_encrypted();
+            dbExists = true;
+            console.log('[INIT] Database exists and encrypted status:', isEncrypted);
+        } catch (err) {
+            console.log('[INIT] Database does not exist or cannot be read:', err);
+            dbExists = false;
+        }
 
-        if (isEncrypted) {
-            console.log('[INIT] Database is encrypted, prompting for decryption');
-            this.setStatus('Database is encrypted');
-            await this.updateEncryptionStatus();
+        // Always show passkey modal on page load
+        console.log('[INIT] Showing passkey modal');
+        this.setStatus('Please enter passphrase');
+        const passphrase = await this.showPassphraseModal(dbExists, isEncrypted);
+        console.log('[INIT] Passphrase modal result:', passphrase !== null);
 
-            // Prompt for decryption
-            const success = await this.showDecryptModal();
-            console.log('[INIT] Decryption modal result:', success);
-            if (!success) {
-                console.log('[INIT] Decryption cancelled, database remains locked');
-                this.setStatus('Database locked - decryption required');
+        if (passphrase === null) {
+            console.log('[INIT] User cancelled passphrase entry');
+            this.setStatus('Passphrase required to continue');
+            this.attachEventListeners();
+            return;
+        }
+
+        // First command to database is always decrypt_database
+        console.log('[INIT] Calling decrypt_database with user passphrase');
+        try {
+            await db.decrypt_database(passphrase);
+            console.log('[INIT] decrypt_database completed successfully');
+            this.state.setDecrypted(true);
+        } catch (err) {
+            console.error('[INIT] decrypt_database failed:', err);
+            this.setStatus('Failed to decrypt database: ' + this.getErrorMessage(err));
+            this.attachEventListeners();
+            return;
+        }
+
+        // If DB was not encrypted or did not exist, also call apply_schema
+        if (!dbExists || !isEncrypted) {
+            console.log('[INIT] Database was not encrypted or did not exist, applying schema');
+            try {
+                await apply_schema(db);
+                console.log('[INIT] Schema applied successfully');
+            } catch (err) {
+                console.error('[INIT] Failed to apply schema:', err);
+                this.setStatus('Failed to apply schema: ' + this.getErrorMessage(err));
                 this.attachEventListeners();
                 return;
             }
-            console.log('[INIT] Database successfully decrypted');
-        } else {
-            // Database is not encrypted, mark as decrypted
-            console.log('[INIT] Database is not encrypted, marking as decrypted');
-            this.state.setDecrypted(true);
         }
-
-        // Apply schema after successful decryption (or if not encrypted)
-        console.log('[INIT] Applying schema');
-        await apply_schema(db);
 
         this.setStatus('Loading lists...');
         console.log('[INIT] Loading lists');
@@ -169,10 +186,6 @@ class TodoApp {
         this.dom.checkEncryptionBtn.addEventListener('click', () => {
             console.log('[EVENTS] Check encryption button clicked');
             this.updateEncryptionStatus();
-        });
-        this.dom.setEncryptionBtn.addEventListener('click', () => {
-            console.log('[EVENTS] Set encryption button clicked');
-            this.handleSetEncryption();
         });
         // Note: Modal cancel button is handled by individual modal functions to avoid conflicts
         console.log('[EVENTS] Event listeners attached');
@@ -481,7 +494,6 @@ class TodoApp {
         this.dom.passphraseModal.classList.remove('hidden');
         console.log('[MODAL] Modal classes after:', this.dom.passphraseModal.className);
         this.dom.passphraseInput.value = '';
-        this.dom.modalError.classList.add('hidden');
         this.dom.passphraseInput.focus();
     }
 
@@ -491,142 +503,54 @@ class TodoApp {
         this.dom.passphraseModal.classList.add('hidden');
         console.log('[MODAL] Modal classes after:', this.dom.passphraseModal.className);
         this.dom.passphraseInput.value = '';
-        this.dom.modalError.classList.add('hidden');
     }
 
-    private showModalError(message: string): void {
-        this.dom.modalError.textContent = message;
-        this.dom.modalError.classList.remove('hidden');
-    }
+    /**
+     * Show passphrase modal on page load.
+     * Returns the passphrase string if submitted, or null if cancelled.
+     */
+    private async showPassphraseModal(dbExists: boolean, isEncrypted: boolean): Promise<string | null> {
+        console.log('[PASSPHRASE] Setting up passphrase modal');
 
-    private async showDecryptModal(): Promise<boolean> {
-        console.log('[DECRYPT] Setting up decrypt modal');
-        this.dom.modalTitle.textContent = 'Decrypt Database';
-        this.dom.modalMessage.textContent = 'This database is encrypted. Enter the passphrase to unlock it.';
+        // Set modal title and message based on database state
+        if (!dbExists) {
+            this.dom.modalTitle.textContent = 'Set Database Passphrase';
+            this.dom.modalMessage.textContent = 'Create a new database by setting a passphrase. Leave empty for an unencrypted database.';
+        } else if (isEncrypted) {
+            this.dom.modalTitle.textContent = 'Enter Passphrase';
+            this.dom.modalMessage.textContent = 'This database is encrypted. Enter the passphrase to unlock it.';
+        } else {
+            this.dom.modalTitle.textContent = 'Enter Passphrase';
+            this.dom.modalMessage.textContent = 'Enter the passphrase for this database. Leave empty if it is not encrypted.';
+        }
 
-        return new Promise<boolean>((resolve) => {
-            const handleSubmit = async (e: Event) => {
-                console.log('[DECRYPT] Form submitted');
+        return new Promise<string | null>((resolve) => {
+            const handleSubmit = (e: Event) => {
+                console.log('[PASSPHRASE] Form submitted');
                 e.preventDefault();
                 const passphrase = this.dom.passphraseInput.value;
-                console.log('[DECRYPT] Attempting decryption with passphrase length:', passphrase.length);
+                console.log('[PASSPHRASE] Passphrase length:', passphrase.length);
 
-                try {
-                    await this.state.db!.decrypt_database(passphrase);
-                    console.log('[DECRYPT] Decryption successful');
-                    this.state.setDecrypted(true);
-                    this.hideModal();
-                    this.setStatus('Database decrypted successfully');
-                    cleanup();
-                    resolve(true);
-                } catch (err) {
-                    console.error('[DECRYPT] Decryption failed:', err);
-                    this.showModalError('Incorrect passphrase. Please try again.');
-                }
+                this.hideModal();
+                cleanup();
+                resolve(passphrase);
             };
 
             const handleCancel = (e: Event) => {
-                console.log('[DECRYPT] Cancel button clicked');
+                console.log('[PASSPHRASE] Cancel button clicked');
                 e.preventDefault();
                 this.hideModal();
                 cleanup();
-                resolve(false);
+                resolve(null);
             };
 
             const cleanup = () => {
-                console.log('[DECRYPT] Cleaning up event listeners');
+                console.log('[PASSPHRASE] Cleaning up event listeners');
                 this.dom.passphraseForm.removeEventListener('submit', handleSubmit);
                 this.dom.modalCancel.removeEventListener('click', handleCancel);
             };
 
-            console.log('[DECRYPT] Adding event listeners');
-            this.dom.passphraseForm.addEventListener('submit', handleSubmit);
-            this.dom.modalCancel.addEventListener('click', handleCancel);
-
-            this.showModal();
-        });
-    }
-
-    private async handleSetEncryption(): Promise<void> {
-        console.log('[SET_ENCRYPTION] Starting set encryption handler');
-        if (!this.state.db) {
-            console.log('[SET_ENCRYPTION] No database connected');
-            alert('No database connected');
-            return;
-        }
-
-        const isEncrypted = await this.state.db.is_encrypted();
-        console.log('[SET_ENCRYPTION] Database encrypted:', isEncrypted);
-        console.log('[SET_ENCRYPTION] Database decrypted:', this.state.isDecrypted);
-
-        if (isEncrypted && !this.state.isDecrypted) {
-            console.log('[SET_ENCRYPTION] Database is encrypted but not decrypted, blocking operation');
-            alert('Please decrypt the database first before changing the encryption key.');
-            return;
-        }
-
-        const action = isEncrypted ? 'Change' : 'Set';
-        console.log('[SET_ENCRYPTION] Action:', action);
-        this.dom.modalTitle.textContent = `${action} Encryption Key`;
-        this.dom.modalMessage.textContent = isEncrypted
-            ? 'Enter a new passphrase to re-encrypt the database, or leave empty to remove encryption.'
-            : 'Enter a passphrase to encrypt the database, or leave empty to cancel.';
-
-        return new Promise<void>((resolve) => {
-            const handleSubmit = async (e: Event) => {
-                console.log('[SET_ENCRYPTION] Form submitted');
-                e.preventDefault();
-                const passphrase = this.dom.passphraseInput.value;
-                console.log('[SET_ENCRYPTION] Passphrase length:', passphrase.length);
-
-                if (!isEncrypted && passphrase === '') {
-                    console.log('[SET_ENCRYPTION] Empty passphrase on unencrypted DB, cancelling');
-                    this.hideModal();
-                    cleanup();
-                    resolve();
-                    return;
-                }
-
-                try {
-                    console.log('[SET_ENCRYPTION] Setting encryption key...');
-                    this.setStatus('Updating encryption...');
-                    await this.state.db!.set_key(passphrase);
-
-                    if (passphrase === '') {
-                        console.log('[SET_ENCRYPTION] Encryption removed');
-                        this.state.setDecrypted(true);
-                        this.setStatus('Encryption removed');
-                    } else {
-                        console.log('[SET_ENCRYPTION] Encryption key set');
-                        this.state.setDecrypted(true);
-                        this.setStatus('Encryption key set successfully');
-                    }
-
-                    this.hideModal();
-                    await this.updateEncryptionStatus();
-                    cleanup();
-                    resolve();
-                } catch (err) {
-                    console.error('[SET_ENCRYPTION] Failed to set encryption:', err);
-                    this.showModalError('Failed to set encryption: ' + this.getErrorMessage(err));
-                }
-            };
-
-            const handleCancel = (e: Event) => {
-                console.log('[SET_ENCRYPTION] Cancel button clicked');
-                e.preventDefault();
-                this.hideModal();
-                cleanup();
-                resolve();
-            };
-
-            const cleanup = () => {
-                console.log('[SET_ENCRYPTION] Cleaning up event listeners');
-                this.dom.passphraseForm.removeEventListener('submit', handleSubmit);
-                this.dom.modalCancel.removeEventListener('click', handleCancel);
-            };
-
-            console.log('[SET_ENCRYPTION] Adding event listeners');
+            console.log('[PASSPHRASE] Adding event listeners');
             this.dom.passphraseForm.addEventListener('submit', handleSubmit);
             this.dom.modalCancel.addEventListener('click', handleCancel);
 

@@ -26,7 +26,6 @@
                 <div class="sidebar-actions">
                     <button id="download-db" class="secondary">Download Database</button>
                     <button id="check-encryption" class="secondary">Check Encryption</button>
-                    <button id="set-encryption" class="secondary">Set Encryption Key</button>
                     <div id="encryption-status" class="info-display"></div>
                 </div>
             </aside>
@@ -51,13 +50,12 @@
             <h3 id="modal-title">Enter Passphrase</h3>
             <p id="modal-message"></p>
             <form id="passphrase-form">
-                <input type="password" id="passphrase-input" placeholder="Passphrase" required autocomplete="off" />
+                <input type="password" id="passphrase-input" placeholder="Passphrase (optional for unencrypted DBs)" autocomplete="off" />
                 <div class="modal-buttons">
                     <button type="submit" id="modal-submit">Submit</button>
                     <button type="button" id="modal-cancel" class="secondary">Cancel</button>
                 </div>
             </form>
-            <div id="modal-error" class="modal-error hidden"></div>
         </div>
     </div>
 
