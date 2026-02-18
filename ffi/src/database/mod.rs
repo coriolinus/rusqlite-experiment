@@ -1,4 +1,5 @@
 mod is_encrypted;
+mod set_encryption;
 
 use crate::{Context as _, Result};
 use anyhow::anyhow;
