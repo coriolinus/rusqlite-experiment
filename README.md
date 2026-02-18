@@ -43,18 +43,34 @@ make serve-spa
 
 ## Notes and Findings
 
-1. Wasm-bindgen is perfectly happy to call `&mut self` methods on JS objects.
-2. Downloading an unencrypted database takes a little bit of support in the SPA, but isn't unduly complicated overall.
-3. Rusqlite has Cargo features for enabling sqlcipher, but not for Sqlite3 Multiple Ciphers.
-    - Do we need to add a feature, or are we happy using sqlite3-mc on wasm and sqlcipher on non-wasm?
-    - Are they compatible with each other if the keys are known?
-    - PRAGMA statements for basic sql operations appear to be equivalent
-    - But the recommended way to tell "is this database encrypted" is to look at the first 16 bytes: if they match `b"SQLite format 3\0"`, it's not encrypted; otherwise it is.
-        - Easy on native, hard on WASM when that's abstracted behind a VFS we don't have real access to
-        - `ffi` crate's `Database::is_encrypted()` does the right thing on wasm
-    - TBD: does `rusqlite` delegate eventually down to [`RelaxedIdbUtil::import_db_unchecked`](https://docs.rs/sqlite-wasm-vfs/latest/sqlite_wasm_vfs/relaxed_idb/struct.RelaxedIdbUtil.html#method.import_db_unchecked) instead of [`import_db`](https://docs.rs/sqlite-wasm-vfs/latest/sqlite_wasm_vfs/relaxed_idb/struct.RelaxedIdbUtil.html#method.import_db), which is necessary if the database is encrypted? If not, can we force that somehow?
-4. We can get quite far with Sqlite on indexeddb, but not as far as encryption at rest: ultimately when we attempt to execute the relevant PRAGMA statement, we run into this error: "Rekeying failed. Encryption is not supported by the VFS."
+### WASM/Browser Interop
 
-    ![alt text](resources/{ADF617DF-CBC6-4913-A9DE-A4D19B5F7F45}.png)
-    ![alt text](resources/{082B7771-0CCA-4059-A3C0-6728925FE576}.png)
-5. We might potentially be able to make this work if we start in a fresh database pre-initialization. 
+1. Wasm-bindgen is perfectly happy to call `&mut self` methods on JS objects.
+2. Downloading an unencrypted database requires some support in the SPA, but the implementation is straightforward overall.
+
+### Encryption Compatibility
+
+3. Rusqlite has Cargo features for sqlcipher but not for Sqlite3 Multiple Ciphers (sqlite3-mc).
+   - Current approach: sqlite3-mc on WASM, sqlcipher on native
+   - **Compatibility**: PRAGMA statements for basic SQL operations appear equivalent between the two
+   - **Detection method**: Unencrypted databases start with `b"SQLite format 3\0"` in their first 16 bytes
+     - Easy to check on native; challenging on WASM where the VFS abstracts file access
+     - The `ffi` crate's `Database::is_encrypted()` handles this correctly on WASM
+
+### IndexedDB VFS Encryption Limitations
+
+**Conclusion**: Encryption at rest is not supported by the IndexedDB VFS.
+
+Tested database encryption using sqlite3-mc on WASM:
+
+- **Existing database rekey**: [Testing `PRAGMA rekey`](https://github.com/coriolinus/rusqlite-experiment/commit/04e668518a28c4ce22c574c3adae3925b39b0077) on an existing unencrypted database fails with:
+  `"Rekeying failed. Encryption is not supported by the VFS."`
+
+- **Fresh database encryption**: [Testing `PRAGMA key`](https://github.com/coriolinus/rusqlite-experiment/commit/e042d78071616effad3d7479627af8115aedcddd) on a new database fails with:
+  `"Setting key failed. Encryption is not supported by the VFS."`
+
+These errors clearly indicate that the IndexedDB VFS does not support encryption, conclusively ruling out encrypted databases when using IndexedDB as the storage layer.
+
+![Rekey error screenshot](resources/{ADF617DF-CBC6-4913-A9DE-A4D19B5F7F45}.png)
+![Key error screenshot](resources/{082B7771-0CCA-4059-A3C0-6728925FE576}.png) 
+
