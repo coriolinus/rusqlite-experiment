@@ -53,3 +53,8 @@ make serve-spa
         - Easy on native, hard on WASM when that's abstracted behind a VFS we don't have real access to
         - `ffi` crate's `Database::is_encrypted()` does the right thing on wasm
     - TBD: does `rusqlite` delegate eventually down to [`RelaxedIdbUtil::import_db_unchecked`](https://docs.rs/sqlite-wasm-vfs/latest/sqlite_wasm_vfs/relaxed_idb/struct.RelaxedIdbUtil.html#method.import_db_unchecked) instead of [`import_db`](https://docs.rs/sqlite-wasm-vfs/latest/sqlite_wasm_vfs/relaxed_idb/struct.RelaxedIdbUtil.html#method.import_db), which is necessary if the database is encrypted? If not, can we force that somehow?
+4. We can get quite far with Sqlite on indexeddb, but not as far as encryption at rest: ultimately when we attempt to execute the relevant PRAGMA statement, we run into this error: "Rekeying failed. Encryption is not supported by the VFS."
+
+    ![alt text](resources/{ADF617DF-CBC6-4913-A9DE-A4D19B5F7F45}.png)
+    ![alt text](resources/{082B7771-0CCA-4059-A3C0-6728925FE576}.png)
+5. We might potentially be able to make this work if we start in a fresh database pre-initialization. 
