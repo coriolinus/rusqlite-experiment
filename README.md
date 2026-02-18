@@ -50,6 +50,6 @@ make serve-spa
     - Are they compatible with each other if the keys are known?
     - PRAGMA statements for basic sql operations appear to be equivalent
     - But the recommended way to tell "is this database encrypted" is to look at the first 16 bytes: if they match `b"SQLite format 3\0"`, it's not encrypted; otherwise it is.
-        - Easy on native, hard on WASM when that's abstracted behind a VFS we don't have real access to 
-        - But maybe we can hack together something that inspects the appropriate IndexedDb table
-    - TBD: how to determine whether `rusqlite` delegates eventually down to [`RelaxedIdbUtil::import_db_unchecked`](https://docs.rs/sqlite-wasm-vfs/latest/sqlite_wasm_vfs/relaxed_idb/struct.RelaxedIdbUtil.html#method.import_db_unchecked) instead of [`import_db`](https://docs.rs/sqlite-wasm-vfs/latest/sqlite_wasm_vfs/relaxed_idb/struct.RelaxedIdbUtil.html#method.import_db), which is necessary if the database is encrypted?
+        - Easy on native, hard on WASM when that's abstracted behind a VFS we don't have real access to
+        - `ffi` crate's `Database::is_encrypted()` does the right thing on wasm
+    - TBD: does `rusqlite` delegate eventually down to [`RelaxedIdbUtil::import_db_unchecked`](https://docs.rs/sqlite-wasm-vfs/latest/sqlite_wasm_vfs/relaxed_idb/struct.RelaxedIdbUtil.html#method.import_db_unchecked) instead of [`import_db`](https://docs.rs/sqlite-wasm-vfs/latest/sqlite_wasm_vfs/relaxed_idb/struct.RelaxedIdbUtil.html#method.import_db), which is necessary if the database is encrypted? If not, can we force that somehow?
