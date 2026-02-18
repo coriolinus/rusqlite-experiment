@@ -1,35 +1,12 @@
-use std::collections::HashMap;
-
 use crate::{Context as _, Database, Error, Result};
 use anyhow::anyhow;
-use serde::Deserialize as _;
 use wasm_bindgen::prelude::*;
 
 #[derive(serde::Deserialize)]
 struct IdbRelaxedDataPage {
     path: String,
     offset: u32,
-    #[serde(deserialize_with = "deserialize_idb_page_data")]
     data: Vec<u8>,
-}
-
-/// Page data is stored in a weird format: an object with string keys to number values
-/// It's a very JS way to store binary data I guess
-fn deserialize_idb_page_data<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
-    // Unfortunately because we don't know whether or not we'll actually get the data in order,
-    // we have to load the whole map.
-    let map = HashMap::<String, u8>::deserialize(d)?;
-    // we need to sort by numeric values of the keys
-    let mut pairs = map
-        .into_iter()
-        .filter_map(|(k, v)| {
-            // if we don't have a numeric key, ignore it, we can't deal with it
-            let k = k.parse::<usize>().ok()?;
-            Some((k, v))
-        })
-        .collect::<Vec<_>>();
-    pairs.sort_unstable_by_key(|(key, _value)| *key);
-    Ok(pairs.into_iter().map(|(_key, value)| value).collect())
 }
 
 #[wasm_bindgen]
@@ -114,6 +91,6 @@ impl Database {
             return Err(anyhow!("loaded wrong page: offset {} != 0", page.offset).into());
         }
 
-        Ok(page.data.starts_with(SQLITE_MAGIC))
+        Ok(!page.data.starts_with(SQLITE_MAGIC))
     }
 }

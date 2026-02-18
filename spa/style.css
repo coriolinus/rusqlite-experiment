@@ -128,5 +128,32 @@ button.danger {
 
 button.secondary {
     background: #6b7280;
-    width: 100%
+    width: 100%;
+    margin-bottom: 8px
+}
+
+.info-display {
+    padding: 8px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    text-align: center;
+    margin-top: 8px
+}
+
+.info-display.encrypted {
+    background: #d1fae5;
+    color: #065f46;
+    border: 1px solid #6ee7b7
+}
+
+.info-display.not-encrypted {
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fcd34d
+}
+
+.info-display.error {
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fca5a5
 }

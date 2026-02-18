@@ -14,7 +14,7 @@ class AppState {
 
     async loadList(id: number): Promise<void> {
         if (!this.db) throw new Error("Database not initialized");
-        
+
         // Free the previous list if it exists
         if (this.currentList) {
             try { this.currentList.free(); } catch { /* ignore */ }
@@ -56,6 +56,8 @@ class DOMElements {
     readonly saveListBtn = this.get<HTMLButtonElement>('#save-list');
     readonly deleteListBtn = this.get<HTMLButtonElement>('#delete-list');
     readonly downloadDbBtn = this.get<HTMLButtonElement>('#download-db');
+    readonly checkEncryptionBtn = this.get<HTMLButtonElement>('#check-encryption');
+    readonly encryptionStatus = this.get<HTMLDivElement>('#encryption-status');
 
     private get<T extends HTMLElement>(selector: string): T {
         const el = document.querySelector(selector);
@@ -80,16 +82,19 @@ class TodoApp {
     async init(): Promise<void> {
         await wasm_init("./ffi_bg.wasm");
         this.setStatus('Connecting to database...');
-        
+
         const db = await Database.connect('todo_app');
         await apply_schema(db);
         this.state.setDatabase(db);
 
         this.setStatus('Loading lists...');
         await this.renderLists();
-        
+
         this.setStatus('Ready');
         this.attachEventListeners();
+
+        // Check encryption status on startup
+        await this.checkEncryption();
     }
 
     private setStatus(text: string): void {
@@ -102,13 +107,14 @@ class TodoApp {
         this.dom.saveListBtn.addEventListener('click', () => this.handleSaveList());
         this.dom.deleteListBtn.addEventListener('click', () => this.handleDeleteList());
         this.dom.downloadDbBtn.addEventListener('click', () => this.handleDownloadDatabase());
+        this.dom.checkEncryptionBtn.addEventListener('click', () => this.checkEncryption());
     }
 
     // ==================== List Management ====================
 
     private async renderLists(): Promise<void> {
         this.dom.clearChildren(this.dom.listsEl);
-        
+
         if (!this.state.db) return;
 
         const all = await TodoList.list_all(this.state.db);
@@ -157,10 +163,10 @@ class TodoApp {
             this.setStatus('Creating list...');
             const list = await TodoList.new(this.state.db, title);
             await list.save(this.state.db);
-            
+
             this.dom.newListTitleInput.value = '';
             await this.renderLists();
-            
+
             this.setStatus('List created');
             await this.handleLoadList(list.id());
         } catch (err) {
@@ -188,7 +194,7 @@ class TodoApp {
         try {
             const id = this.state.currentList.id();
             const ok = await TodoList.delete(this.state.db, id);
-            
+
             if (ok) {
                 this.setStatus('List deleted');
                 this.state.unloadList();
@@ -241,7 +247,7 @@ class TodoApp {
 
     private createItemElement(itemId: number): HTMLLIElement | null {
         if (!this.state.currentList) return null;
-        
+
         const item = this.state.currentList.item(itemId);
         if (!item) return null;
 
@@ -295,7 +301,7 @@ class TodoApp {
         try {
             // Use the new set_item_completed method to modify the item directly in the list
             const result = this.state.currentList.set_item_completed(itemId, checked);
-            
+
             if (result === undefined) {
                 this.setStatus('Item not found');
                 return;
@@ -303,7 +309,7 @@ class TodoApp {
 
             // Save to database
             await this.state.saveCurrentList();
-            
+
             // Re-render to show updated state
             this.renderItems();
         } catch (err) {
@@ -324,7 +330,7 @@ class TodoApp {
         try {
             // Use the new set_item_description method to modify the item directly in the list
             const result = this.state.currentList.set_item_description(itemId, newDesc);
-            
+
             if (result === undefined) {
                 this.setStatus('Item not found');
                 return;
@@ -370,7 +376,7 @@ class TodoApp {
             this.setStatus('Adding item...');
             await this.state.currentList.add_item(this.state.db, desc);
             await this.state.saveCurrentList();
-            
+
             this.dom.newItemDescInput.value = '';
             this.renderItems();
             this.setStatus('Item added');
@@ -383,17 +389,40 @@ class TodoApp {
     // ==================== Utilities ====================
 
     private getErrorMessage(err: unknown): string {
-        return err instanceof Error ? err.message : String(err);
+        return err instanceof Error ? err.message : JSON.stringify(err);
+    }
+
+    private async checkEncryption(): Promise<void> {
+        if (!this.state.db) {
+            this.dom.encryptionStatus.textContent = 'No database connected';
+            this.dom.encryptionStatus.className = 'info-display error';
+            return;
+        }
+
+        try {
+            const isEncrypted = await this.state.db.is_encrypted();
+            if (isEncrypted) {
+                this.dom.encryptionStatus.textContent = '🔒 Database is encrypted';
+                this.dom.encryptionStatus.className = 'info-display encrypted';
+            } else {
+                this.dom.encryptionStatus.textContent = '🔓 Database is not encrypted';
+                this.dom.encryptionStatus.className = 'info-display not-encrypted';
+            }
+        } catch (err) {
+            console.error('Failed to check encryption:', err);
+            this.dom.encryptionStatus.textContent = '⚠️ Failed to check encryption: ' + this.getErrorMessage(err);
+            this.dom.encryptionStatus.className = 'info-display error';
+        }
     }
 
     private async handleDownloadDatabase(): Promise<void> {
         try {
             this.setStatus('Preparing database download...');
-            
+
             // Open the IndexedDB database
             const dbName = 'relaxed-idb';
             const storeName = 'blocks';
-            
+
             const db = await new Promise<IDBDatabase>((resolve, reject) => {
                 const request = indexedDB.open(dbName);
                 request.onsuccess = () => resolve(request.result);
@@ -403,7 +432,7 @@ class TodoApp {
             // Get all blocks from the object store
             const transaction = db.transaction(storeName, 'readonly');
             const store = transaction.objectStore(storeName);
-            
+
             const blocks = await new Promise<any[]>((resolve, reject) => {
                 const request = store.getAll();
                 request.onsuccess = () => resolve(request.result);
@@ -432,7 +461,7 @@ class TodoApp {
             for (const block of todoBlocks) {
                 const dataObj = block.data;
                 const dataLength = Object.keys(dataObj).length;
-                
+
                 for (let i = 0; i < dataLength; i++) {
                     dbBytes[position++] = dataObj[i];
                 }
@@ -441,14 +470,14 @@ class TodoApp {
             // Create a blob and download it
             const blob = new Blob([dbBytes], { type: 'application/x-sqlite3' });
             const url = URL.createObjectURL(blob);
-            
+
             const link = document.createElement('a');
             link.href = url;
             link.download = 'todo-list.sqlite';
             link.click();
-            
+
             URL.revokeObjectURL(url);
-            
+
             this.setStatus('Database downloaded');
         } catch (err) {
             console.error('Failed to download database:', err);
@@ -465,7 +494,7 @@ window.addEventListener('load', async () => {
         await app.init();
     } catch (err) {
         console.error('Failed to initialize app:', err);
-        document.querySelector('#status')!.textContent = 
+        document.querySelector('#status')!.textContent =
             'Failed to initialize: ' + (err instanceof Error ? err.message : String(err));
     }
 });
