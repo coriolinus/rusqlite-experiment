@@ -10,5 +10,5 @@ const SCHEMA: &str = include_str!("schema.sql");
 ///
 /// Really we want a proper migration format, but that's too much to build right now for this demo.
 pub async fn apply_schema(connection: &Connection) -> Result<()> {
-    connection.execute_batch(&SCHEMA).context("applying schema")
+    connection.execute_batch(SCHEMA).context("applying schema")
 }

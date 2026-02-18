@@ -68,8 +68,8 @@ macro_rules! log_call {
 }
 
 #[wasm_bindgen]
-pub async fn apply_schema(database: &mut Database) -> Result<()> {
-    let mut result = todo_list::apply_schema(&mut database.connection).await;
+pub async fn apply_schema(database: &Database) -> Result<()> {
+    let mut result = todo_list::apply_schema(&database.connection).await;
     if let Err(err) = &result
         && err.to_string() == "applying schema"
         && let Some(err) = err.source()
