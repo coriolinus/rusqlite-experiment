@@ -26,7 +26,7 @@ RUST_RS_FILES := $(shell find $(CRATES) \
 RUST_SOURCES := $(WORKSPACE_CARGO_FILES) $(CRATE_MANIFESTS) $(RUST_RS_FILES)
 
 PKG_DIR := ffi/pkg/
-COMPILED_WASM := ffi_bg.js ffi_bg.wasm ffi.js 
+COMPILED_WASM := ffi_bg.wasm ffi.js 
 PKG_OUT := $(addprefix $(PKG_DIR),$(COMPILED_WASM))
 FFI_D_TS := ffi/pkg/ffi.d.ts
 
