@@ -56,6 +56,18 @@ impl From<JsValue> for Error {
     }
 }
 
+impl From<idb::Error> for Error {
+    fn from(value: idb::Error) -> Self {
+        Self(anyhow!("{value}"))
+    }
+}
+
+impl From<serde_wasm_bindgen::Error> for Error {
+    fn from(value: serde_wasm_bindgen::Error) -> Self {
+        Self(anyhow!("{value}"))
+    }
+}
+
 /// Blatant ripoff of what anyhow does so that we can use it as conveniently
 pub trait Context<T, E> {
     fn context<C>(self, context: C) -> Result<T, Error>

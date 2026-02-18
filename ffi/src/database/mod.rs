@@ -1,3 +1,5 @@
+mod is_encrypted;
+
 use crate::{Context as _, Result};
 use anyhow::anyhow;
 use rusqlite::Connection;
@@ -9,6 +11,8 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 pub struct Database {
     pub(crate) connection: Connection,
+    /// The name of the database, used as the path in IndexedDB
+    name: String,
 }
 
 #[wasm_bindgen]
@@ -22,6 +26,9 @@ impl Database {
             .map_err(|err| anyhow!("failed to install relaxed idb vfs: {err}"))?;
 
         let connection = rusqlite::Connection::open(name).context("opening database connection")?;
-        Ok(Self { connection })
+        Ok(Self {
+            connection,
+            name: name.to_string(),
+        })
     }
 }
