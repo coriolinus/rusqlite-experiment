@@ -10,6 +10,7 @@ crate-type = ["cdylib"]
 anyhow = "1.0.101"
 derive_more = { version = "2.1.1", features = ["display", "from"] }
 js-sys = "0.3.85"
+opfs-project = "0.2.3"
 rusqlite = "0.38.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"

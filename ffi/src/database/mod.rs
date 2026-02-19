@@ -5,8 +5,10 @@ use crate::{Context as _, Result};
 use anyhow::anyhow;
 use rusqlite::Connection;
 use sqlite_wasm_rs as ffi;
-use sqlite_wasm_vfs::sahpool::{self, OpfsSAHPoolCfg};
+use sqlite_wasm_vfs::sahpool::{self, OpfsSAHPoolCfgBuilder};
 use wasm_bindgen::prelude::*;
+
+const OPFS_DIRECTORY: &str = "todo-list";
 
 /// A connection to a Turso database
 #[wasm_bindgen]
@@ -22,9 +24,14 @@ impl Database {
     pub async fn connect(name: &str) -> Result<Self> {
         // install OPFS persistence layer as default vfs
         // note: `OpfsSAHPoolCfg` sets values including the name, which gets used as the IDB database name
-        sahpool::install::<ffi::WasmOsCallback>(&OpfsSAHPoolCfg::default(), true)
-            .await
-            .map_err(|err| anyhow!("failed to install relaxed idb vfs: {err}"))?;
+        sahpool::install::<ffi::WasmOsCallback>(
+            &OpfsSAHPoolCfgBuilder::default()
+                .directory(OPFS_DIRECTORY)
+                .build(),
+            true,
+        )
+        .await
+        .map_err(|err| anyhow!("failed to install relaxed idb vfs: {err}"))?;
 
         let connection = rusqlite::Connection::open(name).context("opening database connection")?;
         Ok(Self {
