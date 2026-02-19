@@ -12,12 +12,7 @@ impl Database {
     /// The encryption key is derived from the passphrase in a mechanism distinct to the cipher in use.
     ///
     /// Returns an error if the database key was incorrect.
-    ///
-    /// This is safe to call on a new database before any tables have been added.
-    /// In that case, it sets the database encryption key.
     pub fn decrypt_database(&self, passphrase: &str) -> Result<()> {
-        self.ensure_sql_cipher()
-            .context("ensuring that sqlcipher encryption is used")?;
         self.connection
             .pragma_update(None, "key", passphrase)
             .context("setting pragma key")?;
@@ -44,6 +39,29 @@ impl Database {
                 .pragma_update(None, CIPHER, SQLCIPHER)
                 .context("updating cipher pragma")?;
         }
+        Ok(())
+    }
+
+    /// Set the encryption key for the database.
+    ///
+    /// This updates the stored data such that it is all encrypted with the key derived from teh provided passphrase.
+    ///
+    /// The passphrase is not the actual encryption key.
+    /// The encryption key is derived from the passphrase in a mechanism distinct to the cipher in use.
+    ///
+    /// This operation has three use cases:
+    ///
+    ///   1. Encrypt an existing unencrypted database
+    ///   2. Change the encryption key of an existing encrypted database.
+    ///   3. Remove encryption from an existing encrypted database.
+    ///
+    /// Removing encryption is accomplished by providing an empty passphrase.
+    pub fn set_key(&self, passphrase: &str) -> Result<()> {
+        self.ensure_sql_cipher()
+            .context("ensuring that sqlcipher encryption is used")?;
+        self.connection
+            .pragma_update(None, "rekey", passphrase)
+            .context("rekeying database")?;
         Ok(())
     }
 }
