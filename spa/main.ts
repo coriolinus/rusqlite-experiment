@@ -1,4 +1,4 @@
-import wasm_init, { Database, TodoList, apply_schema } from "./ffi";
+import wasm_init, { Database, TodoList, apply_schema } from "./worker/proxy";
 
 /**
  * Application state
@@ -376,7 +376,7 @@ class TodoApp {
 
         try {
             // Use the new set_item_completed method to modify the item directly in the list
-            const result = this.state.currentList.set_item_completed(itemId, checked);
+            const result = await this.state.currentList.set_item_completed(itemId, checked);
 
             if (result === undefined) {
                 this.setStatus('Item not found');
@@ -405,7 +405,7 @@ class TodoApp {
 
         try {
             // Use the new set_item_description method to modify the item directly in the list
-            const result = this.state.currentList.set_item_description(itemId, newDesc);
+            const result = await this.state.currentList.set_item_description(itemId, newDesc);
 
             if (result === undefined) {
                 this.setStatus('Item not found');
@@ -672,68 +672,7 @@ class TodoApp {
 
     private async handleDownloadDatabase(): Promise<void> {
         try {
-            this.setStatus('Preparing database download...');
-
-            // Open the IndexedDB database
-            const dbName = 'relaxed-idb';
-            const storeName = 'blocks';
-
-            const db = await new Promise<IDBDatabase>((resolve, reject) => {
-                const request = indexedDB.open(dbName);
-                request.onsuccess = () => resolve(request.result);
-                request.onerror = () => reject(request.error);
-            });
-
-            // Get all blocks from the object store
-            const transaction = db.transaction(storeName, 'readonly');
-            const store = transaction.objectStore(storeName);
-
-            const blocks = await new Promise<any[]>((resolve, reject) => {
-                const request = store.getAll();
-                request.onsuccess = () => resolve(request.result);
-                request.onerror = () => reject(request.error);
-            });
-
-            // Filter blocks that start with 'todo_app' and sort by offset
-            const todoBlocks = blocks
-                .filter(block => block.path === 'todo_app')
-                .sort((a, b) => a.offset - b.offset);
-
-            if (todoBlocks.length === 0) {
-                this.setStatus('No database blocks found');
-                alert('No database data found to download');
-                return;
-            }
-
-            // Concatenate all the data bytes
-            const totalSize = todoBlocks.reduce((sum, block) => {
-                return sum + Object.keys(block.data).length;
-            }, 0);
-
-            const dbBytes = new Uint8Array(totalSize);
-            let position = 0;
-
-            for (const block of todoBlocks) {
-                const dataObj = block.data;
-                const dataLength = Object.keys(dataObj).length;
-
-                for (let i = 0; i < dataLength; i++) {
-                    dbBytes[position++] = dataObj[i];
-                }
-            }
-
-            // Create a blob and download it
-            const blob = new Blob([dbBytes], { type: 'application/x-sqlite3' });
-            const url = URL.createObjectURL(blob);
-
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = 'todo-list.sqlite';
-            link.click();
-
-            URL.revokeObjectURL(url);
-
-            this.setStatus('Database downloaded');
+            throw new Error('Database download not yet supported with OPFS backend');
         } catch (err) {
             console.error('Failed to download database:', err);
             this.setStatus('Failed to download database: ' + this.getErrorMessage(err));
