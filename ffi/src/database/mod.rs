@@ -8,7 +8,7 @@ use sqlite_wasm_rs as ffi;
 use sqlite_wasm_vfs::sahpool::{self, OpfsSAHPoolCfgBuilder};
 use wasm_bindgen::prelude::*;
 
-const OPFS_DIRECTORY: &str = "todo-list";
+const SAHPOOL_MAGIC_DIRECTORY: &str = ".sahpool-magic";
 
 /// A connection to a Turso database
 #[wasm_bindgen]
@@ -22,16 +22,21 @@ pub struct Database {
 impl Database {
     /// Connect to a database
     pub async fn connect(name: &str) -> Result<Self> {
+        // ensure sahpool magic directory exists before attempting to write it
+        tokio_fs_ext::create_dir_all(SAHPOOL_MAGIC_DIRECTORY)
+            .await
+            .context("creating sahpool magic directory")?;
+
         // install OPFS persistence layer as default vfs
         // note: `OpfsSAHPoolCfg` sets values including the name, which gets used as the IDB database name
         sahpool::install::<ffi::WasmOsCallback>(
             &OpfsSAHPoolCfgBuilder::default()
-                .directory(OPFS_DIRECTORY)
+                .directory(SAHPOOL_MAGIC_DIRECTORY)
                 .build(),
             true,
         )
         .await
-        .map_err(|err| anyhow!("failed to install relaxed idb vfs: {err}"))?;
+        .map_err(|err| anyhow!("failed to install vfs: {err}"))?;
 
         let connection = rusqlite::Connection::open(name).context("opening database connection")?;
         Ok(Self {
