@@ -704,8 +704,37 @@ class TodoApp {
     }
 
     private async handleDownloadDatabase(): Promise<void> {
+        if (!this.state.db) {
+            alert('No database connected');
+            return;
+        }
+
         try {
-            throw new Error('Database download not yet supported with OPFS backend');
+            this.setStatus('Downloading database...');
+
+            // Get the database name
+            const dbName = await this.state.db.name();
+
+            // Read the database file from OPFS
+            const data = await this.state.db.readDatabaseFile();
+
+            // Create a Blob from the data
+            // Cast to BlobPart - Uint8Array is a valid BufferSource
+            const blob = new Blob([data as BlobPart], { type: 'application/x-sqlite3' });
+
+            // Create a download link
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = dbName.endsWith('.sqlite') || dbName.endsWith('.db') ? dbName : `${dbName}.sqlite`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+
+            // Clean up the object URL
+            URL.revokeObjectURL(url);
+
+            this.setStatus('Database downloaded successfully');
         } catch (err) {
             console.error('Failed to download database:', err);
             this.setStatus('Failed to download database: ' + this.getErrorMessage(err));

@@ -16,8 +16,8 @@ import { HandleManager } from './handle-manager';
 import wasm_init_fn, { Database, TodoList, apply_schema } from '../ffi';
 
 // Handle managers
-const databaseHandles = new HandleManager<any>();
-const todoListHandles = new HandleManager<any>();
+const databaseHandles = new HandleManager<Database>();
+const todoListHandles = new HandleManager<TodoList>();
 
 let initialized = false;
 
@@ -262,6 +262,31 @@ async function handleMessage(request: WorkerRequest): Promise<WorkerResponse> {
                     id: request.id,
                     success: true,
                     payload: undefined,
+                };
+            }
+
+            case 'Database.name': {
+                if (!initialized) throw new Error('WASM not initialized');
+                const { handle } = request.payload as { handle: Handle };
+                const db = databaseHandles.get(handle);
+                const name = db.name();
+                return {
+                    id: request.id,
+                    success: true,
+                    payload: name,
+                };
+            }
+
+            case 'Database.readDatabaseFile': {
+                if (!initialized) throw new Error('WASM not initialized');
+                const { handle } = request.payload as { handle: Handle };
+                const db = databaseHandles.get(handle);
+                const data = db.export();
+
+                return {
+                    id: request.id,
+                    success: true,
+                    payload: data,
                 };
             }
 
