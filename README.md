@@ -86,3 +86,4 @@ These errors clearly indicate that the IndexedDB VFS does not support encryption
   - But that could potentially just be a problem of misinitializing the VFS (see [here](https://utelle.github.io/SQLite3MultipleCiphers/docs/faq/faq_overview/#how-can-i-enable-encryption-for-a-non-default-sqlite-vfs))
 - It _is_ possible to manually specify a VFS which can do encryption at rest
   - but right now decryption fails, possible user error
+  - also the technique here implies that it may have been possible to get this all working in IndexedDb also; we should reinvestigate (see [`e3d1cc9`](https://github.com/coriolinus/rusqlite-experiment/commit/e3d1cc9972706c59ee9af3af23837d5b86dfbf12))
