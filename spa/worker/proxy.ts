@@ -169,6 +169,24 @@ export class Database {
     }
 
     /**
+     * Get the database name
+     */
+    async name(): Promise<string> {
+        return await sendRequest<string>('Database.name', {
+            handle: this.handle,
+        });
+    }
+
+    /**
+     * Read the database file from OPFS
+     */
+    async readDatabaseFile(): Promise<Uint8Array> {
+        return await sendRequest<Uint8Array>('Database.readDatabaseFile', {
+            handle: this.handle,
+        });
+    }
+
+    /**
      * Get the internal handle (for TodoList operations)
      */
     getHandle(): Handle {
