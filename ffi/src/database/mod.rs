@@ -14,8 +14,10 @@ const SAHPOOL_MAGIC_DIRECTORY: &str = ".sahpool-magic";
 #[wasm_bindgen]
 pub struct Database {
     pub(crate) connection: Connection,
-    /// The name of the database, used as the path in IndexedDB
+    /// The name of the database, equivalent to the path in OPFS
     name: String,
+    /// VFS utils
+    vfs_util: sahpool::OpfsSAHPoolUtil,
 }
 
 #[wasm_bindgen]
@@ -29,7 +31,7 @@ impl Database {
 
         // install OPFS persistence layer as default vfs
         // note: `OpfsSAHPoolCfg` sets values including the name, which gets used as the IDB database name
-        sahpool::install::<ffi::WasmOsCallback>(
+        let vfs_util = sahpool::install::<ffi::WasmOsCallback>(
             &OpfsSAHPoolCfgBuilder::default()
                 .directory(SAHPOOL_MAGIC_DIRECTORY)
                 .build(),
@@ -42,6 +44,23 @@ impl Database {
         Ok(Self {
             connection,
             name: name.to_string(),
+            vfs_util,
+        })
+    }
+
+    /// Get the database's name.
+    ///
+    /// This is equivalent to its path in OPFS.
+    pub fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    /// Download the database
+    pub fn export(&self) -> Result<Vec<u8>> {
+        self.vfs_util.export_db(&self.name).map_err(|err| {
+            anyhow!("{err}")
+                .context("exporting database from sahpool")
+                .into()
         })
     }
 }
