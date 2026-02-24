@@ -2,6 +2,7 @@ use std::{convert::Infallible, fmt::Display};
 
 use anyhow::anyhow;
 use serde_json::json;
+use sqlite_wasm_vfs::sahpool::OpfsSAHError;
 use wasm_bindgen::prelude::*;
 
 /// A convenience wrapper for results which defaults to [`Error`].
@@ -53,6 +54,12 @@ impl From<JsValue> for Error {
             .and_then(|value| serde_json::to_string(&value).ok())
             .unwrap_or("js error".into());
         Self(anyhow!(value))
+    }
+}
+
+impl From<OpfsSAHError> for Error {
+    fn from(value: OpfsSAHError) -> Self {
+        Self(anyhow!("{value}"))
     }
 }
 

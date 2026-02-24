@@ -1,7 +1,7 @@
 mod is_encrypted;
 mod set_encryption;
 
-use crate::{Context as _, Result};
+use crate::{Context as _, Error, Result};
 use anyhow::anyhow;
 use rusqlite::Connection;
 use sqlite_wasm_rs as ffi;
@@ -67,5 +67,32 @@ impl Database {
                 .context("exporting database from sahpool")
                 .into()
         })
+    }
+
+    /// Delete the database
+    pub async fn delete(&self) -> Result<()> {
+        if self
+            .vfs_util
+            .exists(&self.name)
+            .map_err(Error::from)
+            .context("checking db existence")?
+        {
+            self.vfs_util
+                .pause_vfs()
+                .map_err(Error::from)
+                .context("pausing vfs")?;
+            let deletion_result = self
+                .vfs_util
+                .delete_db(&self.name)
+                .map_err(Error::from)
+                .context("deleting db");
+            self.vfs_util
+                .unpause_vfs()
+                .await
+                .map_err(Error::from)
+                .context("resuming vfs")?;
+            deletion_result?;
+        }
+        Ok(())
     }
 }
