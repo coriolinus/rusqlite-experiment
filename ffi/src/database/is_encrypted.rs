@@ -1,12 +1,7 @@
-use std::path::PathBuf;
-
-use anyhow::anyhow;
+use futures_lite::AsyncReadExt;
 use wasm_bindgen::prelude::*;
 
-use super::OPFS_DIRECTORY;
 use crate::{Context as _, Database, Result};
-
-const SQL_FILE: &str = "TODO: we need to figure out what this is actually called";
 
 #[wasm_bindgen]
 impl Database {
@@ -18,42 +13,24 @@ impl Database {
     /// Returns `Ok(true)` if encrypted, `Ok(false)` if unencrypted.
     pub async fn is_encrypted(&self) -> Result<bool> {
         // SQLite magic header for unencrypted databases
-        const SQLITE_MAGIC: &[u8; 16] = b"SQLite format 3\0";
+        const SQLITE_MAGIC: [u8; 16] = *b"SQLite format 3\0";
 
-        // for debugging purposes
-        for entry in opfs_project::read_dir(OPFS_DIRECTORY)
+        if !tokio_fs_ext::try_exists(&self.name)
             .await
-            .context("reading opfs directory")?
-            .into_iter()
-            .filter(|entry| {
-                entry
-                    .file_type()
-                    .ok()
-                    .is_some_and(|file_type| file_type.is_file())
-            })
+            .context("checking database file existence")?
         {
-            let log_line = format!(
-                "discovered file in opfs directory: {}",
-                entry.path().display()
-            );
-            web_sys::console::log_1(&log_line.into());
+            // nonexistint database is not encrypted and is not an error
+            return Ok(false);
         }
 
-        return Err(anyhow!("we do not yet know the sql file path").into());
-
-        let path = {
-            let mut path = PathBuf::from(OPFS_DIRECTORY);
-            path.push(SQL_FILE);
-            path
-        };
-
-        // it's too bad that we have to read the whole file given that we only need 16 bytes;
-        // a real FS abstraction lets you do that kind of thing. It feels like the OPFS crate
-        // ecosystem is very young still.
-        let data = opfs_project::read(path)
+        let mut buffer = [0; 16];
+        let mut file = tokio_fs_ext::File::open(&self.name)
             .await
-            .context("reading sqlite file from opfs")?;
+            .context("opening database file")?;
+        file.read_exact(&mut buffer)
+            .await
+            .context("reading first 16 bytes from opfs")?;
 
-        Ok(!data.starts_with(SQLITE_MAGIC))
+        Ok(buffer != SQLITE_MAGIC)
     }
 }
