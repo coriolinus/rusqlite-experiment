@@ -64,11 +64,36 @@ function handleWorkerMessage(event: MessageEvent<WorkerResponse>): void {
     if (response.success) {
         pending.resolve(response.payload);
     } else {
-        // Reconstruct error from serialized form
-        const error = new Error(response.error?.message || 'Unknown error');
+        // Reconstruct error from serialized form with full error chain
+        const buildErrorChain = (err: typeof response.error): { message: string; fullChain: string[] } => {
+            if (!err || !err.message) {
+                return { message: 'Unknown error', fullChain: ['Unknown error'] };
+            }
+
+            const messages: string[] = [err.message];
+            let current = err.cause;
+
+            while (current && current.message) {
+                messages.push(current.message);
+                current = current.cause;
+            }
+
+            return {
+                message: messages[0], // First/outermost message
+                fullChain: messages,
+            };
+        };
+
+        const errorInfo = buildErrorChain(response.error);
+        const error = new Error(errorInfo.message);
+
+        // Store the full chain in a custom property for detailed logging
+        (error as any).errorChain = errorInfo.fullChain;
+
         if (response.error?.stack) {
             error.stack = response.error.stack;
         }
+
         pending.reject(error);
     }
 }

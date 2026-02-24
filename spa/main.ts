@@ -465,7 +465,40 @@ class TodoApp {
     // ==================== Utilities ====================
 
     private getErrorMessage(err: unknown): string {
-        return err instanceof Error ? err.message : JSON.stringify(err);
+        if (err instanceof Error) {
+            // Check if it has an error chain from the proxy
+            if ((err as any).errorChain) {
+                const chain = (err as any).errorChain as string[];
+                return chain.join('\n  Caused by: ');
+            }
+            return err.message;
+        }
+
+        // Handle structured error objects
+        if (err && typeof err === 'object') {
+            // Try toString() first
+            const str = err.toString();
+            if (str && str !== '[object Object]') {
+                return str;
+            }
+
+            // Try to extract useful properties
+            try {
+                const parts: string[] = [];
+                for (const [key, value] of Object.entries(err)) {
+                    if (typeof value !== 'function' && !(value instanceof Map) && !(value instanceof Set)) {
+                        parts.push(`${key}: ${String(value)}`);
+                    }
+                }
+                if (parts.length > 0) {
+                    return parts.join(', ');
+                }
+            } catch {
+                // Fall through
+            }
+        }
+
+        return String(err);
     }
 
     private showOperationBlockedMessage(): void {
@@ -683,12 +716,65 @@ class TodoApp {
 // Initialize the app
 const app = new TodoApp();
 
+/**
+ * Format an error for display - returns both brief and detailed versions
+ */
+function formatError(err: unknown): { brief: string; detailed: string } {
+    if (err instanceof Error) {
+        const brief = err.message;
+
+        // Check if it has an error chain from the proxy
+        if ((err as any).errorChain) {
+            const chain = (err as any).errorChain as string[];
+            const detailed = chain.join('\n  Caused by: ');
+            return { brief, detailed };
+        }
+
+        // Use stack if available for detailed view
+        const detailed = err.stack || err.message;
+        return { brief, detailed };
+    }
+
+    // Handle structured error objects
+    if (err && typeof err === 'object') {
+        // Try toString() first
+        const str = err.toString();
+        if (str && str !== '[object Object]') {
+            return { brief: str, detailed: str };
+        }
+
+        // Try to extract useful properties (avoid non-serializable objects)
+        try {
+            const parts: string[] = [];
+            for (const [key, value] of Object.entries(err)) {
+                if (typeof value !== 'function' && !(value instanceof Map) && !(value instanceof Set)) {
+                    parts.push(`${key}: ${String(value)}`);
+                }
+            }
+            if (parts.length > 0) {
+                const msg = parts.join(', ');
+                return { brief: msg, detailed: msg };
+            }
+        } catch {
+            // Fall through to default
+        }
+    }
+
+    const fallback = String(err);
+    return { brief: fallback, detailed: fallback };
+}
+
 window.addEventListener('load', async () => {
     try {
         await app.init();
     } catch (err) {
+        const { brief, detailed } = formatError(err);
+
+        // Log detailed error to console
         console.error('Failed to initialize app:', err);
-        document.querySelector('#status')!.textContent =
-            'Failed to initialize: ' + (err instanceof Error ? err.message : String(err));
+        console.error('Error details:', detailed);
+
+        // Show brief error in status line
+        document.querySelector('#status')!.textContent = 'Failed to initialize: ' + brief;
     }
 });

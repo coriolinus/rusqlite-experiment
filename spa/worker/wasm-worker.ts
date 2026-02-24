@@ -25,6 +25,25 @@ let initialized = false;
  * Serialize an error for transmission to main thread
  */
 function serializeError(err: unknown): SerializedError {
+    // Handle Map objects
+    if (err instanceof Map) {
+        if (err.has('msg')) {
+            // probably a rust-style error
+            const source = err.get('source');
+            return {
+                message: err.get('msg'),
+                cause: source ? serializeError(source) : undefined,
+            }
+        }
+
+        // fallback to generic map handling
+        const entries = Array.from(err.entries()).map(([k, v]) => `${k}: ${String(v)}`);
+        return {
+            message: `Map error: ${entries.join(', ')}`,
+        };
+    }
+
+    // Standard JavaScript Error
     if (err instanceof Error) {
         return {
             message: err.message,
@@ -32,9 +51,116 @@ function serializeError(err: unknown): SerializedError {
             cause: err.cause ? serializeError(err.cause) : undefined,
         };
     }
+
+    // Handle Rust WASM errors which come as structured objects with 'msg' and 'source' fields
+    if (err && typeof err === 'object' && 'msg' in err) {
+        const rustErr = err as { msg: string; source?: unknown };
+        return {
+            message: rustErr.msg,
+            cause: rustErr.source ? serializeError(rustErr.source) : undefined,
+        };
+    }
+
+    // Handle objects with a message property
+    if (err && typeof err === 'object' && 'message' in err) {
+        const msgErr = err as { message: unknown; cause?: unknown };
+        const messageStr = String(msgErr.message);
+
+        // If the message itself is [object ...], try to extract better info
+        if (messageStr.startsWith('[object ')) {
+            const objStr = extractErrorString(err);
+            if (objStr) {
+                return { message: objStr };
+            }
+        }
+
+        return {
+            message: messageStr,
+            cause: msgErr.cause ? serializeError(msgErr.cause) : undefined,
+        };
+    }
+
+    // Try to extract useful information from the error object
+    if (err && typeof err === 'object') {
+        const objStr = extractErrorString(err);
+        if (objStr) {
+            return { message: objStr };
+        }
+    }
+
+    // Final fallback - avoid [object ...] strings
+    const fallback = String(err);
+
+    if (fallback.startsWith('[object ')) {
+        return {
+            message: `Unknown error type: ${typeof err}, constructor: ${(err as any)?.constructor?.name || 'unknown'}`,
+        };
+    }
+
     return {
-        message: String(err),
+        message: fallback,
     };
+}
+
+/**
+ * Extract a useful error string from an object without serializing non-serializable properties
+ */
+function extractErrorString(obj: object): string | null {
+    // Try toString() first (but not if it returns [object ...])
+    try {
+        const str = obj.toString();
+        if (str && !str.startsWith('[object ')) {
+            return str;
+        }
+    } catch {
+        // Continue to other methods
+    }
+
+    // Try to build a string from safe properties
+    try {
+        const parts: string[] = [];
+        for (const [key, value] of Object.entries(obj)) {
+            // Skip non-serializable types
+            if (typeof value === 'function' || value instanceof Map || value instanceof Set) {
+                continue;
+            }
+
+            try {
+                let valueStr: string;
+                if (value === null) {
+                    valueStr = 'null';
+                } else if (value === undefined) {
+                    valueStr = 'undefined';
+                } else if (typeof value === 'object') {
+                    // For objects, try JSON.stringify but with a check
+                    const jsonStr = JSON.stringify(value);
+                    valueStr = jsonStr.startsWith('[object ') ? String(value) : jsonStr;
+                } else {
+                    valueStr = String(value);
+                }
+
+                parts.push(`${key}: ${valueStr}`);
+            } catch {
+                // Try a simple String() as last resort
+                try {
+                    const simpleStr = String(value);
+                    if (!simpleStr.startsWith('[object ')) {
+                        parts.push(`${key}: ${simpleStr}`);
+                    }
+                } catch {
+                    // Skip this property entirely
+                }
+            }
+        }
+
+        if (parts.length > 0) {
+            return parts.join(', ');
+        }
+    } catch {
+        // All extraction methods failed
+    }
+
+    return null;
 }
 
 /**
@@ -156,6 +282,7 @@ async function handleMessage(request: WorkerRequest): Promise<WorkerResponse> {
                 const { dbHandle } = request.payload as { dbHandle: Handle };
                 const db = databaseHandles.get(dbHandle);
                 const lists = await TodoList.list_all(db);
+                console.log(`[WORKER]: TodoList.list_all -> ${JSON.stringify(lists)}`);
                 return {
                     id: request.id,
                     success: true,
