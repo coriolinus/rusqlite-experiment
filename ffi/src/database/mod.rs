@@ -40,7 +40,12 @@ impl Database {
         .await
         .map_err(|err| anyhow!("failed to install vfs: {err}"))?;
 
-        let connection = rusqlite::Connection::open(name).context("opening database connection")?;
+        let connection = rusqlite::Connection::open_with_flags_and_vfs(
+            name,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE | rusqlite::OpenFlags::SQLITE_OPEN_CREATE,
+            "multipleciphers-opfs-sahpool",
+        )
+        .context("opening database connection")?;
         Ok(Self {
             connection,
             name: name.to_string(),

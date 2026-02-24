@@ -84,3 +84,5 @@ These errors clearly indicate that the IndexedDB VFS does not support encryption
     > Caused by: Rekeying failed. Encryption is not supported by the VFS.\
     > Caused by: Error code 1: SQL error or missing database
   - But that could potentially just be a problem of misinitializing the VFS (see [here](https://utelle.github.io/SQLite3MultipleCiphers/docs/faq/faq_overview/#how-can-i-enable-encryption-for-a-non-default-sqlite-vfs))
+- It _is_ possible to manually specify a VFS which can do encryption at rest
+  - but right now decryption fails, possible user error
