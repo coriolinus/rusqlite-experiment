@@ -74,3 +74,13 @@ These errors clearly indicate that the IndexedDB VFS does not support encryption
 ![Rekey error screenshot](resources/{ADF617DF-CBC6-4913-A9DE-A4D19B5F7F45}.png)
 ![Key error screenshot](resources/{082B7771-0CCA-4059-A3C0-6728925FE576}.png) 
 
+### "sahpool" OPFS VFS Encryption
+
+- Works fine unencrypted; should theoretically have better DB perf than the IndexedDB VFS
+- A fair amount of serialization/deserialization scaffolding and hassle is necessary at the web worker boundary
+- Encryption doesn't "Just Work".
+  - Error when executing rekey pragma:
+    > Failed to set encryption: rekeying database\
+    > Caused by: Rekeying failed. Encryption is not supported by the VFS.\
+    > Caused by: Error code 1: SQL error or missing database
+  - But that could potentially just be a problem of misinitializing the VFS (see [here](https://utelle.github.io/SQLite3MultipleCiphers/docs/faq/faq_overview/#how-can-i-enable-encryption-for-a-non-default-sqlite-vfs))
