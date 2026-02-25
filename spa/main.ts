@@ -527,6 +527,8 @@ class TodoApp {
         console.log('[DECRYPT] Setting up decrypt modal');
         this.dom.modalTitle.textContent = 'Decrypt Database';
         this.dom.modalMessage.textContent = 'This database is encrypted. Enter the passphrase to unlock it.';
+        // Require passphrase for decryption
+        this.dom.passphraseInput.required = true;
 
         return new Promise<boolean>((resolve) => {
             const handleSubmit = async (e: Event) => {
@@ -617,6 +619,8 @@ class TodoApp {
         this.dom.modalMessage.textContent = isEncrypted
             ? 'Enter a new passphrase to re-encrypt the database, or leave empty to remove encryption.'
             : 'Enter a passphrase to encrypt the database, or leave empty to cancel.';
+        // Allow empty passphrase for set/reset (to clear encryption)
+        this.dom.passphraseInput.required = false;
 
         return new Promise<void>((resolve) => {
             const handleSubmit = async (e: Event) => {
