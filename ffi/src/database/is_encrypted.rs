@@ -18,6 +18,12 @@ impl Database {
             .export()
             .context("exporting database to check header")?;
 
-        Ok(!data.starts_with(SQLITE_MAGIC))
+        if data.len() <= SQLITE_MAGIC.len() {
+            // whatever this file is, it's not encrypted
+            return Ok(false);
+        }
+
+        let unencrypted = data.starts_with(SQLITE_MAGIC);
+        Ok(!unencrypted)
     }
 }
