@@ -2,7 +2,7 @@ use std::{convert::Infallible, fmt::Display};
 
 use anyhow::anyhow;
 use serde_json::json;
-use sqlite_wasm_vfs::sahpool::OpfsSAHError;
+use sqlite_wasm_vfs::relaxed_idb::RelaxedIdbError;
 use wasm_bindgen::prelude::*;
 
 /// A convenience wrapper for results which defaults to [`Error`].
@@ -57,8 +57,8 @@ impl From<JsValue> for Error {
     }
 }
 
-impl From<OpfsSAHError> for Error {
-    fn from(value: OpfsSAHError) -> Self {
+impl From<RelaxedIdbError> for Error {
+    fn from(value: RelaxedIdbError) -> Self {
         Self(anyhow!("{value}"))
     }
 }
