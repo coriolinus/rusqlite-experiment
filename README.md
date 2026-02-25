@@ -87,3 +87,4 @@ These errors clearly indicate that the IndexedDB VFS does not support encryption
 - It _is_ possible to manually specify a VFS which can do encryption at rest
   - but right now decryption fails, possible user error
   - also the technique here implies that it may have been possible to get this all working in IndexedDb also; we should reinvestigate (see [`e3d1cc9`](https://github.com/coriolinus/rusqlite-experiment/commit/e3d1cc9972706c59ee9af3af23837d5b86dfbf12))
+- Working with OPFS in this context is a real pain for development: once a database has been locked, it is a real pain to get it to unlock again, or even to just delete the whole thing. OPFS eliminates many out of context tools like the filesystem which would make it simple to just delete a DB and start over again.
