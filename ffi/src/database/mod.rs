@@ -1,6 +1,8 @@
 mod is_encrypted;
 mod set_encryption;
 
+use std::sync::LazyLock;
+
 use crate::{Context as _, Result};
 use anyhow::anyhow;
 use rusqlite::Connection;
@@ -22,13 +24,20 @@ pub struct Database {
 impl Database {
     /// Connect to a database
     pub async fn connect(name: &str) -> Result<Self> {
+        static RUSQLITE_FLAGS: LazyLock<rusqlite::OpenFlags> = LazyLock::new(|| {
+            rusqlite::OpenFlags::SQLITE_OPEN_CREATE | rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE
+        });
+        const VFS_NAME: &str = "multipleciphers-relaxed-idb";
+
         // install relaxed-idb persistence layer as default vfs
         // note: `RelaxedIdbCfg` sets values including the name, which gets used as the IDB database name
         let vfs_util = relaxed_idb::install::<ffi::WasmOsCallback>(&RelaxedIdbCfg::default(), true)
             .await
             .map_err(|err| anyhow!("failed to install relaxed-idb vfs: {err}"))?;
 
-        let connection = rusqlite::Connection::open(name).context("opening database connection")?;
+        let connection =
+            rusqlite::Connection::open_with_flags_and_vfs(name, *RUSQLITE_FLAGS, VFS_NAME)
+                .context("opening database connection")?;
         Ok(Self {
             connection,
             name: name.to_string(),
