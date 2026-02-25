@@ -33,14 +33,13 @@ FFI_D_TS := ffi/pkg/ffi.d.ts
 $(PKG_OUT) $(FFI_D_TS) &: $(RUST_SOURCES)
 	wasm-pack build ffi --target web
 
-SPA_SOURCES := spa/index.html spa/main.ts spa/style.css spa/worker/types.ts spa/worker/handle-manager.ts spa/worker/wasm-worker.ts spa/worker/proxy.ts
-SPA_OUT := spa/out/index.html spa/out/ffi_bg.wasm spa/out/wasm-worker.js
+SPA_SOURCES := spa/index.html spa/main.ts spa/style.css
+SPA_OUT := spa/out/index.html spa/out/ffi_bg.wasm
 
 $(SPA_OUT) &: $(PKG_OUT) $(SPA_SOURCES)
 	rm -rf spa/out
 	cp $(PKG_OUT) spa
 	bun build spa/index.html --outdir spa/out --target browser
-	bun build spa/worker/wasm-worker.ts --outfile spa/out/wasm-worker.js --target browser --format esm
 	cp spa/ffi_bg.wasm spa/out/
 
 .PHONY: clean-spa

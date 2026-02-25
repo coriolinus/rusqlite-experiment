@@ -1,4 +1,4 @@
-import wasm_init, { Database, TodoList, apply_schema } from "./worker/proxy";
+import wasm_init, { Database, TodoList, apply_schema } from "./ffi";
 
 /**
  * Application state
@@ -67,7 +67,6 @@ class DOMElements {
     readonly downloadDbBtn = this.get<HTMLButtonElement>('#download-db');
     readonly checkEncryptionBtn = this.get<HTMLButtonElement>('#check-encryption');
     readonly setEncryptionBtn = this.get<HTMLButtonElement>('#set-encryption');
-    readonly deleteDbBtn = this.get<HTMLButtonElement>('#delete-db');
     readonly encryptionStatus = this.get<HTMLDivElement>('#encryption-status');
     readonly passphraseModal = this.get<HTMLDivElement>('#passphrase-modal');
     readonly modalTitle = this.get<HTMLHeadingElement>('#modal-title');
@@ -166,7 +165,6 @@ class TodoApp {
             console.log('[EVENTS] Encryption button clicked');
             await this.handleEncryptionButtonClick();
         });
-        this.dom.deleteDbBtn.addEventListener('click', () => this.handleDeleteDatabase());
         // Note: Modal cancel button is handled by individual modal functions to avoid conflicts
         console.log('[EVENTS] Event listeners attached');
     }
@@ -178,7 +176,7 @@ class TodoApp {
 
         if (!this.state.canPerformOperations()) return;
 
-        const all = await TodoList.list_all(this.state.db!);
+        const all = TodoList.list_all(this.state.db!);
         const entries = all.map(([id, title]) => ({ id: Number(id), title }));
         entries.sort((a, b) => a.id - b.id);
 
@@ -369,7 +367,7 @@ class TodoApp {
 
         try {
             // Use the new set_item_completed method to modify the item directly in the list
-            const result = await this.state.currentList.set_item_completed(itemId, checked);
+            const result = this.state.currentList.set_item_completed(itemId, checked);
 
             if (result === undefined) {
                 this.setStatus('Item not found');
@@ -398,7 +396,7 @@ class TodoApp {
 
         try {
             // Use the new set_item_description method to modify the item directly in the list
-            const result = await this.state.currentList.set_item_description(itemId, newDesc);
+            const result = this.state.currentList.set_item_description(itemId, newDesc);
 
             if (result === undefined) {
                 this.setStatus('Item not found');
@@ -540,7 +538,7 @@ class TodoApp {
                 console.log('[DECRYPT] Attempting decryption with passphrase length:', passphrase.length);
 
                 try {
-                    await this.state.db!.decrypt_database(passphrase);
+                    this.state.db!.decrypt_database(passphrase);
                     console.log('[DECRYPT] Decryption successful');
                     this.state.setDecrypted(true);
                     this.hideModal();
@@ -642,7 +640,7 @@ class TodoApp {
                 try {
                     console.log('[SET_ENCRYPTION] Setting encryption key...');
                     this.setStatus('Updating encryption...');
-                    await this.state.db!.set_key(passphrase);
+                    this.state.db!.set_key(passphrase);
 
                     if (passphrase === '') {
                         console.log('[SET_ENCRYPTION] Encryption removed');
@@ -757,10 +755,10 @@ class TodoApp {
             this.setStatus('Downloading database...');
 
             // Get the database name
-            const dbName = await this.state.db.name();
+            const dbName = this.state.db.name();
 
-            // Read the database file from OPFS
-            const data = await this.state.db.readDatabaseFile();
+            // Export the database contents
+            const data = this.state.db.export();
 
             // Create a Blob from the data
             // Cast to BlobPart - Uint8Array is a valid BufferSource
@@ -785,28 +783,6 @@ class TodoApp {
         }
     }
 
-    private async handleDeleteDatabase(): Promise<void> {
-        if (!this.state.db) {
-            alert('No database connected');
-            return;
-        }
-
-        if (!confirm('Delete the entire database? This will permanently delete all lists and items. This cannot be undone.')) {
-            return;
-        }
-
-        try {
-            this.setStatus('Deleting database...');
-
-            // Delete the database
-            await this.state.db.delete();
-
-            this.setStatus('Database deleted - please refresh the page to reconnect');
-        } catch (err) {
-            console.error('Failed to delete database:', err);
-            this.setStatus('Failed to delete database: ' + this.getErrorMessage(err));
-        }
-    }
 }
 
 // Initialize the app
