@@ -67,6 +67,7 @@ class DOMElements {
     readonly downloadDbBtn = this.get<HTMLButtonElement>('#download-db');
     readonly checkEncryptionBtn = this.get<HTMLButtonElement>('#check-encryption');
     readonly setEncryptionBtn = this.get<HTMLButtonElement>('#set-encryption');
+    readonly deleteDbBtn = this.get<HTMLButtonElement>('#delete-db');
     readonly encryptionStatus = this.get<HTMLDivElement>('#encryption-status');
     readonly passphraseModal = this.get<HTMLDivElement>('#passphrase-modal');
     readonly modalTitle = this.get<HTMLHeadingElement>('#modal-title');
@@ -165,6 +166,7 @@ class TodoApp {
             console.log('[EVENTS] Encryption button clicked');
             await this.handleEncryptionButtonClick();
         });
+        this.dom.deleteDbBtn.addEventListener('click', () => this.handleDeleteDatabase());
         // Note: Modal cancel button is handled by individual modal functions to avoid conflicts
         console.log('[EVENTS] Event listeners attached');
     }
@@ -780,6 +782,29 @@ class TodoApp {
         } catch (err) {
             console.error('Failed to download database:', err);
             this.setStatus('Failed to download database: ' + this.getErrorMessage(err));
+        }
+    }
+
+    private async handleDeleteDatabase(): Promise<void> {
+        if (!this.state.db) {
+            alert('No database connected');
+            return;
+        }
+
+        if (!confirm('Delete the entire database? This will permanently delete all lists and items. This cannot be undone.')) {
+            return;
+        }
+
+        try {
+            this.setStatus('Deleting database...');
+
+            // Delete the database
+            await this.state.db.delete();
+
+            this.setStatus('Database deleted - please refresh the page to reconnect');
+        } catch (err) {
+            console.error('Failed to delete database:', err);
+            this.setStatus('Failed to delete database: ' + this.getErrorMessage(err));
         }
     }
 }

@@ -290,6 +290,18 @@ async function handleMessage(request: WorkerRequest): Promise<WorkerResponse> {
                 };
             }
 
+            case 'Database.delete': {
+                if (!initialized) throw new Error('WASM not initialized');
+                const { handle } = request.payload as { handle: Handle };
+                const db = databaseHandles.get(handle);
+                await db.delete();
+                return {
+                    id: request.id,
+                    success: true,
+                    payload: undefined,
+                };
+            }
+
             case 'apply_schema': {
                 if (!initialized) throw new Error('WASM not initialized');
                 const { dbHandle } = request.payload as { dbHandle: Handle };

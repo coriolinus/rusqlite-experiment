@@ -187,6 +187,15 @@ export class Database {
     }
 
     /**
+     * Delete the database from OPFS
+     */
+    async delete(): Promise<void> {
+        await sendRequest<void>('Database.delete', {
+            handle: this.handle,
+        });
+    }
+
+    /**
      * Get the internal handle (for TodoList operations)
      */
     getHandle(): Handle {

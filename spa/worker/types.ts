@@ -138,6 +138,18 @@ export interface DatabaseSetKeyResponse {
     payload: void;
 }
 
+export interface DatabaseDeleteRequest {
+    type: 'Database.delete';
+    payload: {
+        handle: Handle;
+    };
+}
+
+export interface DatabaseDeleteResponse {
+    success: true;
+    payload: void;
+}
+
 // --- Schema Operations ---
 
 export interface ApplySchemaRequest {
