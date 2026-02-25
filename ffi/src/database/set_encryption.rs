@@ -13,6 +13,8 @@ impl Database {
     ///
     /// Returns an error if the database key was incorrect.
     pub fn decrypt_database(&self, passphrase: &str) -> Result<()> {
+        self.ensure_sql_cipher()
+            .context("ensuring that sqlcipher encryption is used")?;
         self.connection
             .pragma_update(None, "key", passphrase)
             .context("setting pragma key")?;
