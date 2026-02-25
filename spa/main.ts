@@ -176,7 +176,7 @@ class TodoApp {
 
         if (!this.state.canPerformOperations()) return;
 
-        const all = TodoList.list_all(this.state.db!);
+        const all = await TodoList.list_all(this.state.db!);
         const entries = all.map(([id, title]) => ({ id: Number(id), title }));
         entries.sort((a, b) => a.id - b.id);
 
