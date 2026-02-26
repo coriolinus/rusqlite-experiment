@@ -49,12 +49,53 @@ make serve-spa
 
 ### Encryption Compatibility
 
-3. Rusqlite has Cargo features for sqlcipher but not for Sqlite3 Multiple Ciphers (sqlite3-mc).
-   - Current approach: sqlite3-mc on WASM, sqlcipher on native
-   - **Compatibility**: PRAGMA statements for basic SQL operations appear equivalent between the two
-   - **Detection method**: Unencrypted databases start with `b"SQLite format 3\0"` in their first 16 bytes
-     - Easy to check on native; challenging on WASM where the VFS abstracts file access
-     - The `ffi` crate's `Database::is_encrypted()` handles this correctly on WASM
+Rusqlite has Cargo features for sqlcipher but not for Sqlite3 Multiple Ciphers (sqlite3-mc).
+
+- Current approach: sqlite3-mc on WASM, sqlcipher on native
+- Unencrypted databases start with `b"SQLite format 3\0"` in their first 16 bytes
+
+Note that working purely on the command line, despite advertising sqlcipher compatibility and using sqlcipher-style encryption,
+the two technologies are not actually compatible. So we should not expect to ever be able to use a web CC DB in a non-wasm context.
+
+```sh
+$ sqlcipher --version
+3.49.2 2025-05-07 10:39:52 17144570b0d96ae63cd6f3edca39e27ebd74925252bbaf6723bcb2f6b486alt1 (64-bit) (SQLCipher 4.9.0 community)
+$ sqlite3mc --version
+3.51.2 2026-01-09 17:27:48 b270f8339eb13b504d0b2ba154ebca966b7dde08e40c3ed7d559749818cb2075 (64-bit)
+$ # the db is encrypted
+$ hexyl --length 16 experiment.sqlite
+┌────────┬─────────────────────────┬─────────────────────────┬────────┬────────┐
+│00000000│ aa 31 44 40 c0 28 98 45 ┊ 26 32 d6 91 8a 5f e3 f6 │×1D@×(×E┊&2×××_××│
+└────────┴─────────────────────────┴─────────────────────────┴────────┴────────┘
+$ # sqlite3mc can decrypt it
+$ sqlite3mc experiment.sqlite
+SQLite version 3.51.2 2026-01-09 17:27:48 (SQLite3 Multiple Ciphers 2.2.7)
+Enter ".help" for usage hints.
+sqlite> pragma cipher='sqlcipher';
+sqlcipher
+sqlite> pragma key='asdf';
+ok
+sqlite> select * from sqlite_master limit 0;
+sqlite> select title, is_completed, description from todo_lists inner join todo_items on todo_lists.id = todo_items.list_id;
+asdf|0|a
+asdf|1|s
+asdf|0|d
+asdf|1|f
+sqlite> .quit
+$ # sqlcipher cannot decrypt it
+$ sqlcipher experiment.sqlite
+SQLite version 3.49.2 2025-05-07 10:39:52 (SQLCipher 4.9.0 community)
+Enter ".help" for usage hints.
+sqlite> pragma cipher='sqlcipher';
+sqlite> pragma key='asdf';
+ok
+sqlite> select * from sqlite_master limit 0;
+2026-02-26 17:17:15.769: ERROR CORE sqlcipher_page_cipher: hmac check failed for pgno=1
+2026-02-26 17:17:15.769: ERROR CORE sqlite3Codec: error decrypting page 1 data: 1
+2026-02-26 17:17:15.769: ERROR CORE sqlcipher_codec_ctx_set_error 1
+Parse error: file is not a database (26)
+sqlite> .quit
+```
 
 ### IndexedDB VFS
 
@@ -78,16 +119,7 @@ Whatever the problem is, it's not (only) that the phrase hashing is inconsistent
 We've added explicit cipherscheme updates per [the instructions](https://utelle.github.io/SQLite3MultipleCiphers/docs/configuration/config_sql_pragmas/#key-handling).
 We also experimented with manually implementing hashing, but removed that because it didn't fix the problem and was just noise in the code.
 
-**Minor Caveat**: Even though we have attempted to explicitly specify that we should use `sqlcipher` compatibility, it appears not to work. Attempts to load the database always produce errors of this form:
-
-```sql
-sqlcipher> .schema
-2026-02-25 15:03:22.175: ERROR CORE sqlcipher_page_cipher: hmac check failed for pgno=1
-2026-02-25 15:03:22.175: ERROR CORE sqlite3Codec: error decrypting page 1 data: 1
-2026-02-25 15:03:22.175: ERROR CORE sqlcipher_codec_ctx_set_error 1
-```
-
-Happily, we don't have a real use case for ever moving a CC database from one device to another, so this should be fine.
+**Minor Caveat**: sqlite3mc and sqlcipher are [not actually compatible](#encryption-compatibility). Happily, we don't have a real use case for ever moving a CC database from one device to another, so this should be fine. But in any case, this frees us to experiment among other potential encryption schemes to see if any of them work better.
 
 ### `sahpool` OPFS VFS
 
