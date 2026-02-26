@@ -74,6 +74,10 @@ encrypted the key pragma is always the first action on connection, we still enco
 works fine, and performing operations on an encrypted database is fine (including unsetting the key to decrypt the entire DB), but
 decrypting the database when it is not already unlocked just fails.
 
+Whatever the problem is, it's not (only) that the phrase hashing is inconsistent or that it's not correctly deducing the encryption scheme.
+We've added explicit cipherscheme updates per [the instructions](https://utelle.github.io/SQLite3MultipleCiphers/docs/configuration/config_sql_pragmas/#key-handling).
+We also experimented with manually implementing hashing, but removed that because it didn't fix the problem and was just noise in the code.
+
 **Minor Caveat**: Even though we have attempted to explicitly specify that we should use `sqlcipher` compatibility, it appears not to work. Attempts to load the database always produce errors of this form:
 
 ```sql
