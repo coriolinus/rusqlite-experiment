@@ -68,6 +68,12 @@ See the [demo](#demo) to see this in action.
 
 **Major Caveat**: As of right now, decryption seems to be broken. Everything works as expected when first encrypting a database and operating on the encrypted data, and we can prove that the database is in fact hiding its data. Unfortunately, decryption attempts currently always produce a "wrong passphrase" error.
 
+There's some lore on the internet that for an existing encrypted database, the only correct way to decrypt it is by
+providing the key pragma as the first action on connection. However, after refactoring to ensure that when a database is
+encrypted the key pragma is always the first action on connection, we still encounter the same kinds of errors. Encrypting a database
+works fine, and performing operations on an encrypted database is fine (including unsetting the key to decrypt the entire DB), but
+decrypting the database when it is not already unlocked just fails.
+
 **Minor Caveat**: Even though we have attempted to explicitly specify that we should use `sqlcipher` compatibility, it appears not to work. Attempts to load the database always produce errors of this form:
 
 ```sql

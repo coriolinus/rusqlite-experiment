@@ -1,4 +1,4 @@
-import wasm_init, { Database, TodoList, apply_schema } from "./ffi";
+import wasm_init, { Database, TodoList, apply_schema, db_is_encrypted } from "./ffi";
 
 /**
  * Application state
@@ -7,18 +7,13 @@ class AppState {
     db: Database | null = null;
     currentListId: number | null = null;
     currentList: TodoList | null = null;
-    isDecrypted: boolean = false;
 
     setDatabase(db: Database): void {
         this.db = db;
     }
 
-    setDecrypted(decrypted: boolean): void {
-        this.isDecrypted = decrypted;
-    }
-
     canPerformOperations(): boolean {
-        return this.db !== null && this.isDecrypted;
+        return this.db !== null;
     }
 
     async loadList(id: number): Promise<void> {
@@ -107,41 +102,48 @@ class TodoApp {
         console.log('[INIT] Hiding modal on startup');
         this.hideModal();
 
-        const db = await Database.connect('todo_app');
+        // Check encryption before opening a connection — the key must be
+        // provided as the first operation on an encrypted connection.
+        console.log('[INIT] Checking if database is encrypted...');
+        const isEncrypted = await db_is_encrypted('todo_app');
+        console.log('[INIT] Database encrypted:', isEncrypted);
+
+        let db: Database;
+        if (isEncrypted) {
+            // Connect with key; modal stays open until the passphrase is correct or the user cancels.
+            console.log('[INIT] Connecting to encrypted database...');
+            const result = await this.promptAndConnectEncrypted('todo_app');
+            if (result === null) {
+                this.setStatus('Connection cancelled — reload the page to try again');
+                console.log('[INIT] Attaching event listeners (no db)');
+                this.attachEventListeners();
+                this.updateEncryptionStatus();
+                this.updateEncryptionButton();
+                return;
+            }
+            db = result;
+        } else {
+            db = await Database.connect('todo_app');
+            console.log('[INIT] Applying schema');
+            await apply_schema(db);
+        }
+
         console.log('[INIT] Database connected');
         this.state.setDatabase(db);
 
-        // Check if database is encrypted before doing anything else
-        console.log('[INIT] Checking if database is encrypted...');
-        const isEncrypted = await db.is_encrypted();
-        console.log('[INIT] Database encrypted:', isEncrypted);
+        this.setStatus('Loading lists...');
+        console.log('[INIT] Loading lists');
+        await this.renderLists();
 
-        if (isEncrypted) {
-            console.log('[INIT] Database is encrypted and locked');
-            this.setStatus('Database locked - click Decrypt to unlock');
-        } else {
-            // Database is not encrypted, mark as decrypted
-            console.log('[INIT] Database is not encrypted, marking as decrypted');
-            this.state.setDecrypted(true);
-
-            // Apply schema for unencrypted databases
-            console.log('[INIT] Applying schema');
-            await apply_schema(db);
-
-            this.setStatus('Loading lists...');
-            console.log('[INIT] Loading lists');
-            await this.renderLists();
-
-            this.setStatus('Ready');
-        }
+        this.setStatus('Ready');
 
         console.log('[INIT] Attaching event listeners');
         this.attachEventListeners();
 
         // Check encryption status and update button text
         console.log('[INIT] Updating encryption status display');
-        await this.updateEncryptionStatus();
-        await this.updateEncryptionButton();
+        this.updateEncryptionStatus();
+        this.updateEncryptionButton();
         console.log('[INIT] Initialization complete');
     }
 
@@ -156,10 +158,10 @@ class TodoApp {
         this.dom.saveListBtn.addEventListener('click', () => this.handleSaveList());
         this.dom.deleteListBtn.addEventListener('click', () => this.handleDeleteList());
         this.dom.downloadDbBtn.addEventListener('click', () => this.handleDownloadDatabase());
-        this.dom.checkEncryptionBtn.addEventListener('click', async () => {
+        this.dom.checkEncryptionBtn.addEventListener('click', () => {
             console.log('[EVENTS] Check encryption button clicked');
-            await this.updateEncryptionStatus();
-            await this.updateEncryptionButton();
+            this.updateEncryptionStatus();
+            this.updateEncryptionButton();
         });
         this.dom.setEncryptionBtn.addEventListener('click', async () => {
             console.log('[EVENTS] Encryption button clicked');
@@ -523,30 +525,30 @@ class TodoApp {
         this.dom.modalError.classList.remove('hidden');
     }
 
-    private async showDecryptModal(): Promise<boolean> {
+    /// Open a passphrase modal and attempt `Database.connect_with_key`.
+    /// Keeps the modal open on wrong passphrase; resolves with the connected
+    /// Database on success, or null if the user cancels.
+    private async promptAndConnectEncrypted(name: string): Promise<Database | null> {
         console.log('[DECRYPT] Setting up decrypt modal');
         this.dom.modalTitle.textContent = 'Decrypt Database';
         this.dom.modalMessage.textContent = 'This database is encrypted. Enter the passphrase to unlock it.';
-        // Require passphrase for decryption
         this.dom.passphraseInput.required = true;
 
-        return new Promise<boolean>((resolve) => {
+        return new Promise<Database | null>((resolve) => {
             const handleSubmit = async (e: Event) => {
                 console.log('[DECRYPT] Form submitted');
                 e.preventDefault();
                 const passphrase = this.dom.passphraseInput.value;
-                console.log('[DECRYPT] Attempting decryption with passphrase length:', passphrase.length);
+                console.log('[DECRYPT] Attempting connection with passphrase length:', passphrase.length);
 
                 try {
-                    this.state.db!.decrypt_database(passphrase);
-                    console.log('[DECRYPT] Decryption successful');
-                    this.state.setDecrypted(true);
+                    const db = await Database.connect_with_key(name, passphrase);
+                    console.log('[DECRYPT] Connection successful');
                     this.hideModal();
-                    this.setStatus('Database decrypted successfully');
                     cleanup();
-                    resolve(true);
+                    resolve(db);
                 } catch (err) {
-                    console.error('[DECRYPT] Decryption failed:', err);
+                    console.error('[DECRYPT] Connection failed:', err);
                     this.showModalError('Incorrect passphrase. Please try again.');
                 }
             };
@@ -556,7 +558,7 @@ class TodoApp {
                 e.preventDefault();
                 this.hideModal();
                 cleanup();
-                resolve(false);
+                resolve(null);
             };
 
             const cleanup = () => {
@@ -579,26 +581,9 @@ class TodoApp {
             return;
         }
 
-        const isEncrypted = await this.state.db.is_encrypted();
-
-        // If encrypted and locked, show decrypt modal
-        if (isEncrypted && !this.state.isDecrypted) {
-            console.log('[DECRYPT] Showing decrypt modal');
-            const success = await this.showDecryptModal();
-            if (success) {
-                // After successful decryption, apply schema and load lists
-                console.log('[DECRYPT] Applying schema after decryption');
-                await apply_schema(this.state.db);
-                this.setStatus('Loading lists...');
-                await this.renderLists();
-                this.setStatus('Ready');
-                await this.updateEncryptionStatus();
-                await this.updateEncryptionButton();
-            }
-        } else {
-            // Otherwise, show set encryption modal (either not encrypted or encrypted and unlocked)
-            await this.handleSetEncryption();
-        }
+        // If we have a Database instance it is already open and usable;
+        // decryption happens during construction. Just handle set/reset/remove.
+        await this.handleSetEncryption();
     }
 
     private async handleSetEncryption(): Promise<void> {
@@ -609,9 +594,8 @@ class TodoApp {
             return;
         }
 
-        const isEncrypted = await this.state.db.is_encrypted();
+        const isEncrypted = this.state.db.is_encrypted();
         console.log('[SET_ENCRYPTION] Database encrypted:', isEncrypted);
-        console.log('[SET_ENCRYPTION] Database decrypted:', this.state.isDecrypted);
 
         const action = isEncrypted ? 'Reset' : 'Set';
         console.log('[SET_ENCRYPTION] Action:', action);
@@ -644,17 +628,15 @@ class TodoApp {
 
                     if (passphrase === '') {
                         console.log('[SET_ENCRYPTION] Encryption removed');
-                        this.state.setDecrypted(true);
                         this.setStatus('Encryption removed');
                     } else {
                         console.log('[SET_ENCRYPTION] Encryption key set');
-                        this.state.setDecrypted(true);
                         this.setStatus('Encryption key set successfully');
                     }
 
                     this.hideModal();
-                    await this.updateEncryptionStatus();
-                    await this.updateEncryptionButton();
+                    this.updateEncryptionStatus();
+                    this.updateEncryptionButton();
                     cleanup();
                     resolve();
                 } catch (err) {
@@ -685,31 +667,20 @@ class TodoApp {
         });
     }
 
-    private async updateEncryptionButton(): Promise<void> {
+    private updateEncryptionButton(): void {
         if (!this.state.db) {
             return;
         }
 
         try {
-            const isEncrypted = await this.state.db.is_encrypted();
-            const decrypted = this.state.isDecrypted;
-
-            if (isEncrypted && !decrypted) {
-                // Encrypted and locked
-                this.dom.setEncryptionBtn.textContent = 'Decrypt';
-            } else if (isEncrypted && decrypted) {
-                // Encrypted and unlocked
-                this.dom.setEncryptionBtn.textContent = 'Reset Encryption Key';
-            } else {
-                // Not encrypted
-                this.dom.setEncryptionBtn.textContent = 'Set Encryption Key';
-            }
+            const isEncrypted = this.state.db.is_encrypted();
+            this.dom.setEncryptionBtn.textContent = isEncrypted ? 'Reset Encryption Key' : 'Set Encryption Key';
         } catch (err) {
             console.error('[BUTTON] Failed to update encryption button:', err);
         }
     }
 
-    private async updateEncryptionStatus(): Promise<void> {
+    private updateEncryptionStatus(): void {
         console.log('[STATUS] Updating encryption status');
         if (!this.state.db) {
             console.log('[STATUS] No database connected');
@@ -719,22 +690,13 @@ class TodoApp {
         }
 
         try {
-            const isEncrypted = await this.state.db.is_encrypted();
-            const decrypted = this.state.isDecrypted;
-            console.log('[STATUS] Encrypted:', isEncrypted, 'Decrypted:', decrypted);
+            const isEncrypted = this.state.db.is_encrypted();
+            console.log('[STATUS] Encrypted:', isEncrypted);
 
             if (isEncrypted) {
-                if (decrypted) {
-                    console.log('[STATUS] Database is encrypted and unlocked');
-                    this.dom.encryptionStatus.textContent = '🔒 Database is encrypted (unlocked)';
-                    this.dom.encryptionStatus.className = 'info-display encrypted';
-                } else {
-                    console.log('[STATUS] Database is encrypted and locked');
-                    this.dom.encryptionStatus.textContent = '🔒 Database is encrypted (locked)';
-                    this.dom.encryptionStatus.className = 'info-display error';
-                }
+                this.dom.encryptionStatus.textContent = '🔒 Database is encrypted';
+                this.dom.encryptionStatus.className = 'info-display encrypted';
             } else {
-                console.log('[STATUS] Database is not encrypted');
                 this.dom.encryptionStatus.textContent = '🔓 Database is not encrypted';
                 this.dom.encryptionStatus.className = 'info-display not-encrypted';
             }
