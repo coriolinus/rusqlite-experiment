@@ -162,7 +162,9 @@ This approach involves embedding sqlite into the wasm program, but then running 
   │00000000│ 5c f3 5c bb 09 e8 32 00 ┊ a9 b1 7e 4c 98 3b 20 99 │\×\×_×20┊××~L×; ×│
   └────────┴─────────────────────────┴─────────────────────────┴────────┴────────┘
   ```
-- ```sql
+- Using [sqlite3mc](https://utelle.github.io/SQLite3MultipleCiphers/docs/installation/install_overview/):
+
+  ```sql
   sqlite> PRAGMA key='my secret passphrase that I set on the website';
   sqlite> .mode table
   sqlite> select * from todo_lists join todo_items on todo_lists.id = todo_items.list_id;
