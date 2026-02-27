@@ -78,7 +78,7 @@ impl Database {
         // the pragma itself gives no indication of whether or not the encryption key was correct.
         // its documentation suggests this as a simple fast query which can determine if decryption works.
         self.connection
-            .execute("SELECT * FROM sqlite_master", [])
+            .execute("SELECT * FROM sqlite_master LIMIT 0", [])
             .context("executing sample query failed; check the encryption key")?;
         Ok(())
     }
