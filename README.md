@@ -126,10 +126,13 @@ We also experimented with manually implementing hashing, but removed that becaus
 This approach involves embedding sqlite into the wasm program, but then running that on a separate web worker with a facade in place to hide the communication between the two processes. In theory OPFS is likely faster than IndexedDB, but cross-process communication latency likely kills any perf improvements we'd theoretically gain. No benchmarking has been attempted to determine the truth of the matter.
 
 - Works fine unencrypted; should theoretically have better DB perf than the IndexedDB VFS
-- A fair amount of serialization/deserialization scaffolding and hassle is necessary at the web worker boundary
-- It is possible to manually specify a VFS which can do encryption at rest
-  - but right now decryption fails, possible user error
-- Working with OPFS in this context is a real pain for development: once a database has been locked, it is a real pain to get it to unlock again, or even to just delete the whole thing. OPFS eliminates many out of context tools like the filesystem which would make it simple to just delete a DB and start over again.
+- Got moderately quickly to the same state as the current IDB-backed implementation, to wit: encrypting a blank DB works, and operating on a freshly-encrypted DB works, but once the DB is locked, establishing a new unencrypted connection tends to fail for mysterious reasons.
+- Working with OPFS is a real pain for development: once a database has been locked, it is a real pain to get it to unlock again, or even to just delete the whole thing. OPFS eliminates many out of context tools like the filesystem which would make it simple to just delete a DB and start over again.
+- The requirement to communicate via channels and replicate the whole program's interface dramatically increases the maintenance burden, at least for programs of this size. 
+- This experiment targets only the `JS -> IPC -> Rust/WASM in the worker` flow. We didn't even attempt `Rust/WASM -> JS -> IPC -> Rust/WASM in the worker`. 
+- Most recent commit: [`7e547c4`](https://github.com/coriolinus/rusqlite-experiment/tree/7e547c4d14453cf2900ff24de1925476e799d4c7)
+
+**Conclusion**: unless we are forced into it, the additional latency and overhead of routing all DB work to a web worker through the JS layer is a huge pain to deal with and we're better off avoiding it. 
 
 ## Demo
 
