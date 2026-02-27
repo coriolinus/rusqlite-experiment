@@ -34,29 +34,6 @@ pub async fn db_is_encrypted(db_name: &str) -> Result<bool> {
 }
 
 impl Database {
-    /// Ensure that the cipher in use is `sqlcipher`
-    ///
-    /// <https://utelle.github.io/SQLite3MultipleCiphers/docs/ciphers/cipher_sqlcipher/>
-    ///
-    /// In certain contexts, we want to just apply the pragma without performing any initial checks.
-    /// In those cases, set `force`.
-    fn ensure_sql_cipher(&self, force: bool) -> Result<()> {
-        const CIPHER: &str = "cipher";
-        const SQLCIPHER: &str = "sqlcipher";
-        if force || {
-            let existing_cipher = self
-                .connection
-                .pragma_query_value(None, CIPHER, |row| row.get::<_, String>(0))
-                .context("getting existing cipher pragma")?;
-            existing_cipher != SQLCIPHER
-        } {
-            self.connection
-                .pragma_update(None, CIPHER, SQLCIPHER)
-                .context("updating cipher pragma")?;
-        }
-        Ok(())
-    }
-
     /// Decrypt the database with the provided key.
     ///
     /// **IMPORTANT** This must be the first operation performed on a newly opened connection.
@@ -69,9 +46,6 @@ impl Database {
     ///
     /// Returns an error if the database key was incorrect.
     pub(super) fn decrypt(&self, passphrase: &str) -> Result<()> {
-        self.ensure_sql_cipher(true)
-            .context("forcing the sqlcipher scheme when decrypting db")?;
-
         self.connection
             .pragma_update(None, "key", passphrase)
             .context("setting pragma key")?;
@@ -101,8 +75,6 @@ impl Database {
     ///
     /// Removing encryption is accomplished by providing an empty passphrase.
     pub fn set_key(&self, passphrase: &str) -> Result<()> {
-        self.ensure_sql_cipher(false)
-            .context("ensuring that sqlcipher encryption is used")?;
         self.connection
             .pragma_update(None, "rekey", passphrase)
             .context("rekeying database")?;

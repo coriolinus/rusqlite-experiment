@@ -101,25 +101,17 @@ sqlite> .quit
 
 This approach involves embedding sqlite into the compiled wasm program; database access happens in-process and the database is ultimately backed by IndexedDB.
 
-**Conclusion**: Encryption at rest **kind of works** via the IndexedDB VFS.
+**Conclusion**: Encryption at rest **works** via the IndexedDB VFS.
 
 There's a roundabout path to enabling it: you can't just do `rusqlite::Connection::open(name)` when you create your connection. Instead you have to use `rusqlite::Connection::open_with_flags_and_vfs`, manually specifying the flags and a VFS name comprising a normal vfs name with an encryption prefix. In this case, that's `"multipleciphers-relaxed-idb"`.
 
 See the [demo](#demo) to see this in action.
 
-**Major Caveat**: As of right now, decryption seems to be broken. Everything works as expected when first encrypting a database and operating on the encrypted data, and we can prove that the database is in fact hiding its data. Unfortunately, decryption attempts currently always produce a "wrong passphrase" error.
+#### Sqlcipher Incompatibility
 
-There's some lore on the internet that for an existing encrypted database, the only correct way to decrypt it is by
-providing the key pragma as the first action on connection. However, after refactoring to ensure that when a database is
-encrypted the key pragma is always the first action on connection, we still encounter the same kinds of errors. Encrypting a database
-works fine, and performing operations on an encrypted database is fine (including unsetting the key to decrypt the entire DB), but
-decrypting the database when it is not already unlocked just fails.
+sqlite3mc and sqlcipher are [not actually compatible](#encryption-compatibility). Happily, we don't have a real use case for ever moving a CC database from one device to another, so this should be fine. But in any case, this frees us to experiment among other potential encryption schemes to see if any of them work better.
 
-Whatever the problem is, it's not (only) that the phrase hashing is inconsistent or that it's not correctly deducing the encryption scheme.
-We've added explicit cipherscheme updates per [the instructions](https://utelle.github.io/SQLite3MultipleCiphers/docs/configuration/config_sql_pragmas/#key-handling).
-We also experimented with manually implementing hashing, but removed that because it didn't fix the problem and was just noise in the code.
-
-**Minor Caveat**: sqlite3mc and sqlcipher are [not actually compatible](#encryption-compatibility). Happily, we don't have a real use case for ever moving a CC database from one device to another, so this should be fine. But in any case, this frees us to experiment among other potential encryption schemes to see if any of them work better.
+But more than that, sqlite3mc on wasm appears to be incompatible with _itself_ when using sqlcipher compat mode. This took quite a lot of debugging to determine. Ultimately the solution is simple: use the default ciphering (or possibly some alternatives do work; not tested). At that point everything works as expected.
 
 ### `sahpool` OPFS VFS
 
@@ -128,11 +120,11 @@ This approach involves embedding sqlite into the wasm program, but then running 
 - Works fine unencrypted; should theoretically have better DB perf than the IndexedDB VFS
 - Got moderately quickly to the same state as the current IDB-backed implementation, to wit: encrypting a blank DB works, and operating on a freshly-encrypted DB works, but once the DB is locked, establishing a new unencrypted connection tends to fail for mysterious reasons.
 - Working with OPFS is a real pain for development: once a database has been locked, it is a real pain to get it to unlock again, or even to just delete the whole thing. OPFS eliminates many out of context tools like the filesystem which would make it simple to just delete a DB and start over again.
-- The requirement to communicate via channels and replicate the whole program's interface dramatically increases the maintenance burden, at least for programs of this size. 
-- This experiment targets only the `JS -> IPC -> Rust/WASM in the worker` flow. We didn't even attempt `Rust/WASM -> JS -> IPC -> Rust/WASM in the worker`. 
+- The requirement to communicate via channels and replicate the whole program's interface dramatically increases the maintenance burden, at least for programs of this size.
+- This experiment targets only the `JS -> IPC -> Rust/WASM in the worker` flow. We didn't even attempt `Rust/WASM -> JS -> IPC -> Rust/WASM in the worker`.
 - Most recent commit: [`7e547c4`](https://github.com/coriolinus/rusqlite-experiment/tree/7e547c4d14453cf2900ff24de1925476e799d4c7)
 
-**Conclusion**: unless we are forced into it, the additional latency and overhead of routing all DB work to a web worker through the JS layer is a huge pain to deal with and we're better off avoiding it. 
+**Conclusion**: unless we are forced into it, the additional latency and overhead of routing all DB work to a web worker through the JS layer is a huge pain to deal with and we're better off avoiding it.
 
 ## Demo
 
@@ -159,6 +151,9 @@ This approach involves embedding sqlite into the wasm program, but then running 
   ```
 
 4. Click the "Set Encryption Key" button to encrypt the DB; remember your passphrase!
+1. Refresh the page to drop knowledge of the passphrase
+1. Enter the passphrase in the popup modal on load
+1. Note that everything works
 1. Click the "Download Database" button for a local copy of the sqlite DB
 
 - ```sh
@@ -167,5 +162,15 @@ This approach involves embedding sqlite into the wasm program, but then running 
   │00000000│ 5c f3 5c bb 09 e8 32 00 ┊ a9 b1 7e 4c 98 3b 20 99 │\×\×_×20┊××~L×; ×│
   └────────┴─────────────────────────┴─────────────────────────┴────────┴────────┘
   ```
-
-6. Refresh the page to drop knowledge of the passphrase
+- ```sql
+  sqlite> PRAGMA key='my secret passphrase that I set on the website';
+  sqlite> .mode table
+  sqlite> select * from todo_lists join todo_items on todo_lists.id = todo_items.list_id;
+  +----+-------+---------------------+----+---------+-------------+--------------+---------------------+
+  | id | title |     created_at      | id | list_id | description | is_completed |     created_at      |
+  +----+-------+---------------------+----+---------+-------------+--------------+---------------------+
+  | 1  | asdf  | 2026-02-25 13:54:22 | 1  | 1       | 1           | 0            | 2026-02-25 13:54:24 |
+  | 1  | asdf  | 2026-02-25 13:54:22 | 2  | 1       | 2           | 1            | 2026-02-25 13:54:25 |
+  | 1  | asdf  | 2026-02-25 13:54:22 | 3  | 1       | 3           | 0            | 2026-02-25 13:54:27 |
+  +----+-------+---------------------+----+---------+-------------+--------------+---------------------+
+  ```
